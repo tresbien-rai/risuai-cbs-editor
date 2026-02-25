@@ -121,7 +121,21 @@ html,body{height:100%;overflow:hidden;background:#0e0f14;color:#c8ccd4;font-fami
 .ir{display:flex;justify-content:space-between;padding:1px 0;font-size:10px}
 .ik{color:#e5c07b}.iv{color:#98c379}
 
-.ce{color:#61afef}.cb{color:#c678dd;font-weight:600}.cv{color:#e5c07b}.cm{color:#98c379}.cn{color:#e06c75;font-weight:600}.cc{color:#5c6370;font-style:italic}
+.ce{color:#61afef}.cv{color:#e5c07b}.cm{color:#98c379}.cn{color:#e06c75;font-weight:600}.cc{color:#5c6370;font-style:italic}
+/* Block depth colors (rotating palette, with alt shades for consecutive same-level blocks) */
+.cb0{color:#c678dd;font-weight:600}.cb0a{color:#b060c8;font-weight:600}
+.cb1{color:#e5c07b;font-weight:600}.cb1a{color:#d4a84a;font-weight:600}
+.cb2{color:#56b6c2;font-weight:600}.cb2a{color:#3a9daa;font-weight:600}
+.cb3{color:#d19a66;font-weight:600}.cb3a{color:#b87d45;font-weight:600}
+.cb4{color:#98c379;font-weight:600}.cb4a{color:#7aaa58;font-weight:600}
+.cb5{color:#e06c75;font-weight:600}.cb5a{color:#c24e5a;font-weight:600}
+.cb-err{color:#e06c75;font-weight:700;text-decoration:wavy underline #e06c75;text-underline-offset:3px}
+.cbs-warn{color:#d19a66;background:rgba(209,154,102,0.1);border-radius:2px}
+/* Diagnostics bar */
+.diag{padding:3px 10px;background:#1c1012;border-bottom:1px solid #3a2020;font-size:10px;color:#e06c75;flex-shrink:0;display:none;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;line-height:1.5;max-height:60px;overflow-y:auto}
+.diag.show{display:block}
+.diag span{color:#e5c07b;cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
+.diag span:hover{color:#61afef}
 
 .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1a1b24;border:1px solid #61afef;color:#c8ccd4;padding:5px 14px;border-radius:4px;font-size:11px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.show{opacity:1}.toast.err{border-color:#e06c75;color:#e06c75}
@@ -170,6 +184,7 @@ html,body{height:100%;overflow:hidden;background:#0e0f14;color:#c8ccd4;font-fami
 
     <div class="center" id="ctr">
       <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span></div>
+      <div class="diag" id="diag"></div>
       <div class="econtainer">
         <div class="ehigh" id="hl"></div>
         <textarea class="etxt" id="ed" spellcheck="false"></textarea>
@@ -462,34 +477,120 @@ function createCBSParser(config) {
   return {parse,vars};
 }
 
+// Block tags that open a new depth level
+const BLOCK_OPEN = /^#(if|if_pure|when|each|pure|puredisplay|pure_display|code|escape|func)\b/;
+const BLOCK_CLOSE = /^\//;
+const BLOCK_MID = /^:else$/;
+const DEPTH_COLORS = ['cb0','cb1','cb2','cb3','cb4','cb5'];
+// CBS-like keywords that suggest a single { was meant to be {{
+const CBS_KEYWORDS = /^(#if|#when|#each|#pure|#func|#escape|#code|\/if|\/when|\/each|\/pure|\/func|\/escape|\/code|:else|char|bot|user|persona|getvar|setvar|getglobalvar|addvar|calc|random|print|slot|comment|\/\/)/;
+
 function highlightCBS(text) {
-  const parts=[]; let i=0;
-  while(i<text.length) {
-    if(text[i]==="{"&&text[i+1]==="{") {
-      // Find the matching }} - scan forward without nesting (highlight each {{ }} as one token)
-      let j=i+2, depth=1;
-      while(j<text.length-1&&depth>0){
-        if(text[j]==="{"&&text[j+1]==="{"){depth++;j+=2;}
-        else if(text[j]==="}"&&text[j+1]==="}"){depth--;if(depth>0)j+=2;else j+=2;}
+  const parts = []; let i = 0;
+  let blockDepth = 0;
+  const openStack = [];
+  // Track alternating index per depth level
+  const depthCounter = {};
+  let lineNum = 1;
+
+  while (i < text.length) {
+    if (text[i] === '{' && text[i+1] === '{') {
+      // Find matching }}
+      let j = i + 2, depth = 1;
+      while (j < text.length - 1 && depth > 0) {
+        if (text[j] === '{' && text[j+1] === '{') { depth++; j += 2; }
+        else if (text[j] === '}' && text[j+1] === '}') { depth--; if (depth > 0) j += 2; else j += 2; }
         else j++;
       }
-      if(depth>0) j=text.length; // unclosed {{ - take rest of line
-      const expr=text.substring(i,j);
-      const inner=expr.length>=4?expr.substring(2,expr.length-2):"";
-      let cls="ce";
-      if(inner.startsWith("#if")||inner.startsWith("#when")||inner.startsWith(":else")||(inner.startsWith("/")&&!inner.startsWith("//"))) cls="cb";
-      else if(inner.startsWith("#each")||inner.startsWith("#pure")||inner.startsWith("#func")||inner.startsWith("#escape")||inner.startsWith("#code")) cls="cb";
-      else if(inner.startsWith("setvar")||inner.startsWith("getvar")||inner.startsWith("getglobalvar")||inner.startsWith("addvar")||inner.startsWith("settempvar")||inner.startsWith("tempvar")||inner.startsWith("setdefault")||inner.startsWith("slot")) cls="cv";
-      else if(inner.startsWith("calc")||inner.startsWith("? ")||inner.startsWith("round")||inner.startsWith("floor")||inner.startsWith("ceil")||inner.startsWith("greater")||inner.startsWith("less")||inner.startsWith("equal")||inner.startsWith("notequal")) cls="cm";
-      else if(inner==="char"||inner==="bot"||inner==="user"||inner==="persona") cls="cn";
-      else if(inner.startsWith("//")||inner.startsWith("comment")) cls="cc";
-      parts.push('<span class="'+cls+'">'+escH(expr)+'</span>');
-      i=j;
-    } else if(text[i]==="\n"){parts.push("\n");i++;}
-    else{let e=i;while(e<text.length&&text[e]!=="\n"){if(text[e]==="{"&&text[e+1]==="{")break;e++;}if(e===i){parts.push(escH(text[i]));i++;}else{parts.push(escH(text.substring(i,e)));i=e;}}
+      if (depth > 0) j = text.length;
+      const expr = text.substring(i, j);
+      const inner = expr.length >= 4 ? expr.substring(2, expr.length - 2) : '';
+
+      let cls = 'ce';
+      if (BLOCK_OPEN.test(inner)) {
+        // Get alternating shade for this depth
+        if (!depthCounter[blockDepth]) depthCounter[blockDepth] = 0;
+        const alt = depthCounter[blockDepth] % 2 === 1 ? 'a' : '';
+        cls = DEPTH_COLORS[blockDepth % DEPTH_COLORS.length] + alt;
+        openStack.push({ tag: inner.split(/[\s:]/)[0], line: lineNum, depth: blockDepth, alt: alt });
+        depthCounter[blockDepth]++;
+        blockDepth++;
+      } else if (BLOCK_CLOSE.test(inner) && !inner.startsWith('//')) {
+        blockDepth = Math.max(0, blockDepth - 1);
+        if (openStack.length > 0) {
+          const matched = openStack.pop();
+          cls = DEPTH_COLORS[matched.depth % DEPTH_COLORS.length] + matched.alt;
+        } else {
+          cls = 'cb-err';
+        }
+      } else if (BLOCK_MID.test(inner)) {
+        cls = openStack.length > 0
+          ? DEPTH_COLORS[openStack[openStack.length-1].depth % DEPTH_COLORS.length] + openStack[openStack.length-1].alt
+          : 'cb0';
+      } else if (inner.startsWith('setvar') || inner.startsWith('getvar') || inner.startsWith('getglobalvar') || inner.startsWith('addvar') || inner.startsWith('settempvar') || inner.startsWith('tempvar') || inner.startsWith('setdefault') || inner.startsWith('slot')) {
+        cls = 'cv';
+      } else if (inner.startsWith('calc') || inner.startsWith('? ') || inner.startsWith('round') || inner.startsWith('floor') || inner.startsWith('ceil') || inner.startsWith('greater') || inner.startsWith('less') || inner.startsWith('equal') || inner.startsWith('notequal')) {
+        cls = 'cm';
+      } else if (inner === 'char' || inner === 'bot' || inner === 'user' || inner === 'persona') {
+        cls = 'cn';
+      } else if (inner.startsWith('//') || inner.startsWith('comment')) {
+        cls = 'cc';
+      }
+
+      parts.push('<span class="' + cls + '">' + escH(expr) + '</span>');
+      for (let k = i; k < j; k++) if (text[k] === '\n') lineNum++;
+      i = j;
+    } else if (text[i] === '\n') {
+      parts.push('\n'); lineNum++; i++;
+    } else {
+      // Plain text scan - also detect typos
+      let e = i;
+      let segment = '';
+      while (e < text.length && text[e] !== '\n') {
+        if (text[e] === '{' && text[e+1] === '{') break;
+
+        // Check for lone }} (missing opening {{)
+        if (text[e] === '}' && text[e+1] === '}') {
+          if (segment) { parts.push(escH(segment)); segment = ''; }
+          parts.push('<span class="cb-err" title="Stray }} without matching {{">' + escH('}}') + '</span>');
+          e += 2;
+          continue;
+        }
+
+        // Check for single { that looks like a CBS typo
+        if (text[e] === '{' && text[e+1] !== '{') {
+          // Look ahead to see if content after { looks like CBS
+          const ahead = text.substring(e + 1, Math.min(e + 20, text.length));
+          if (CBS_KEYWORDS.test(ahead)) {
+            if (segment) { parts.push(escH(segment)); segment = ''; }
+            // Find the extent of this suspected typo (until } or newline)
+            let te = e + 1;
+            while (te < text.length && text[te] !== '}' && text[te] !== '\n') te++;
+            if (te < text.length && text[te] === '}') te++;
+            parts.push('<span class="cbs-warn" title="Single { detected. Did you mean {{?">' + escH(text.substring(e, te)) + '</span>');
+            e = te;
+            continue;
+          }
+        }
+
+        // Check for single } after what looked like CBS content
+        if (text[e] === '}' && text[e+1] !== '}' && e > 0 && text[e-1] !== '}') {
+          // Less common case, just pass through
+        }
+
+        segment += text[e];
+        e++;
+      }
+      if (segment) parts.push(escH(segment));
+      if (e === i) { parts.push(escH(text[i])); i++; }
+      else i = e;
+    }
   }
-  return parts.join("");
+
+  highlightCBS._diag = openStack.map(b => ({ tag: b.tag, line: b.line }));
+  return parts.join('');
 }
+highlightCBS._diag = [];
 function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 
 // RPack: Simple byte substitution (from RisuAI source)
@@ -678,6 +779,34 @@ function update(){
   prev.textContent=r;
   hl.innerHTML=highlightCBS(ed.value)+'\n';
   _('prevInfo').textContent=r.length+' ch';
+  // Show diagnostics
+  const diag = highlightCBS._diag || [];
+  const diagEl = _('diag');
+  if (diag.length > 0) {
+    diagEl.innerHTML = '\u26A0 Unclosed: ' + diag.map(d =>
+      '<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>'
+    ).join(', ');
+    diagEl.classList.add('show');
+    sDot.classList.add('err');
+    // Click to jump to line
+    diagEl.querySelectorAll('span[data-ln]').forEach(s => {
+      s.addEventListener('click', () => {
+        const ln = parseInt(s.dataset.ln);
+        const lines = ed.value.split('\n');
+        let pos = 0;
+        for (let i = 0; i < ln - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+        ed.focus();
+        ed.setSelectionRange(pos, pos);
+        // Scroll to position
+        const lineHeight = parseFloat(getComputedStyle(ed).lineHeight) || 20;
+        ed.scrollTop = (ln - 3) * lineHeight;
+      });
+    });
+  } else {
+    diagEl.classList.remove('show');
+    diagEl.innerHTML = '';
+    if (!S.parseErr) sDot.classList.remove('err');
+  }
   if(S.bTab==='state')renderState();
 }
 let ut;function sched(){clearTimeout(ut);ut=setTimeout(update,80);}
