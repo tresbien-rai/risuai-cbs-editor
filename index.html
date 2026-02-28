@@ -291,7 +291,7 @@ function createCBSParser(config) {
   reg("addvar", (s,m,a) => { if(a.length>=2) vars[a[0]] = String(parseFloat(vars[a[0]]||"0")+parseFloat(a[1])); return ""; });
   reg("setdefaultvar", (s,m,a) => { if(a.length>=2 && !(a[0] in vars)) vars[a[0]] = a.slice(1).join("::"); return ""; }, ["setdefault"]);
   reg("getglobalvar", (s,m,a) => vars[a[0]] ?? vars["global_"+a[0]] ?? "");
-  reg("tempvar", (s,m,a,tv) => tv?.[a[0]] ?? "");
+  reg("tempvar", (s,m,a,tv) => tv?.[a[0]] ?? "", ["gettempvar"]);
   reg("settempvar", (s,m,a,tv) => { if(a.length>=2 && tv) tv[a[0]] = a.slice(1).join("::"); return {text:"",var:tv||{}}; });
 
   reg("calc", (s,m,a) => String(calcString(a.join("::"))));
