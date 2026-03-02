@@ -191,13 +191,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
     <button class="hb" id="bTheme" title="Toggle light/dark mode">&#9788;</button>
   </div>
 
-  <div class="main nosel" id="ma">
+  <div class="main" id="ma">
     <div class="left" id="left">
       <div class="left-top">
         <div class="left-top-hdr">Prompt Navigator</div>
         <div class="left-top-body" id="navBody"></div>
       </div>
-      <div class="left-hd" id="leftHD"></div>
+      <div class="left-hd nosel" id="leftHD"></div>
       <div class="left-bot" id="leftBot">
         <div class="tbar" id="lTbar">
           <button class="tb a" data-t="panel">Panel</button>
@@ -219,23 +219,87 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
       </div>
     </div>
 
-    <div class="vd" id="vDiv"></div>
+    <div class="vd nosel" id="vDiv"></div>
 
     <div class="right" id="rp">
-      <div class="right-hdr"><span>Preview</span><span style="flex:1"></span><span id="prevInfo" style="font-weight:400;color:var(--fg3);font-size:9px"></span></div>
+      <div class="right-hdr nosel"><span>Preview</span><span style="flex:1"></span><span id="prevInfo" style="font-weight:400;color:var(--fg3);font-size:9px"></span><button class="hb" id="bCopy" style="margin-left:6px;font-size:9px;padding:2px 6px" title="Copy preview text">Copy</button></div>
       <div class="right-body"><div class="preview" id="prev"></div></div>
     </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
 <script>
-function calcString(expr) {
+// RPN calculator matching RisuAI's infunctions.ts
+function toRPN(expression) {
+  let outputQueue = '';
+  let operatorStack = [];
+  const operators = {
+    '+': {p:2, a:'L'}, '-': {p:2, a:'L'}, '*': {p:3, a:'L'}, '/': {p:3, a:'L'},
+    '^': {p:4, a:'L'}, '%': {p:3, a:'L'}, '<': {p:1, a:'L'}, '>': {p:1, a:'L'},
+    '|': {p:1, a:'L'}, '&': {p:1, a:'L'}, '\u2264': {p:1, a:'L'}, '\u2265': {p:1, a:'L'},
+    '=': {p:1, a:'L'}, '\u2260': {p:1, a:'L'}, '!': {p:5, a:'R'}
+  };
+  const opKeys = Object.keys(operators);
+  expression = expression.replace(/\s+/g, '');
+  const tokens = [];
+  let last = '';
+  for (let i = 0; i < expression.length; i++) {
+    const c = expression[i];
+    if (c === '-' && (i === 0 || opKeys.includes(expression[i-1]) || expression[i-1] === '(')) { last += c; }
+    else if (opKeys.includes(c)) { tokens.push(last || '0'); last = ''; tokens.push(c); }
+    else { last += c; }
+  }
+  tokens.push(last || '0');
+  tokens.forEach(t => {
+    if (parseFloat(t) || t === '0') { outputQueue += t + ' '; }
+    else if (opKeys.includes(t)) {
+      while (operatorStack.length > 0 &&
+        ((operators[t].a === 'L' && operators[t].p <= operators[operatorStack[operatorStack.length-1]].p) ||
+         (operators[t].a === 'R' && operators[t].p < operators[operatorStack[operatorStack.length-1]].p))) {
+        outputQueue += operatorStack.pop() + ' ';
+      }
+      operatorStack.push(t);
+    }
+  });
+  while (operatorStack.length > 0) outputQueue += operatorStack.pop() + ' ';
+  return outputQueue.trim();
+}
+function evalRPN(expression) {
+  const stack = [];
+  expression.split(' ').forEach(t => {
+    if (parseFloat(t) || t === '0') { stack.push(parseFloat(t)); }
+    else {
+      let b = stack.pop() || 0, a = stack.pop() || 0;
+      switch (t) {
+        case '+': stack.push(a+b); break; case '-': stack.push(a-b); break;
+        case '*': stack.push(a*b); break; case '/': stack.push(a/b); break;
+        case '^': stack.push(a**b); break; case '%': stack.push(a%b); break;
+        case '<': stack.push(a<b?1:0); break; case '>': stack.push(a>b?1:0); break;
+        case '|': stack.push(a||b); break; case '&': stack.push(a&&b); break;
+        case '\u2264': stack.push(a<=b?1:0); break; case '\u2265': stack.push(a>=b?1:0); break;
+        case '=': stack.push(a===b?1:0); break; case '\u2260': stack.push(a!==b?1:0); break;
+        case '!': stack.push(b?0:1); break;
+      }
+    }
+  });
+  return stack.length ? stack.pop() : 0;
+}
+function calcString(text) {
   try {
-    const sanitized = expr.replace(/[^0-9+\-*/%^().<>=! ]/g, "");
-    const jsExpr = sanitized.replace(/\^/g, "**");
-    const result = Function(`"use strict"; return (${jsExpr})`)();
-    if (typeof result === "boolean") return result ? "1" : "0";
-    return Number(result);
+    // Handle parentheses with depth tracking (matching RisuAI)
+    const depth = [''];
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '(') { depth.push(''); }
+      else if (text[i] === ')' && depth.length > 1) { depth[depth.length-2] += evalRPN(toRPN(depth.pop())); }
+      else { depth[depth.length-1] += text[i]; }
+    }
+    // Normalize operators before RPN conversion
+    let expr = depth.join('');
+    expr = expr.replace(/&&/g, '&').replace(/\|\|/g, '|')
+              .replace(/<=/g, '\u2264').replace(/>=/g, '\u2265')
+              .replace(/==/g, '=').replace(/!=/g, '\u2260')
+              .replace(/null/gi, '0');
+    return evalRPN(toRPN(expr));
   } catch { return 0; }
 }
 function parseArray(p1) {
@@ -948,6 +1012,12 @@ _('pD').addEventListener('click',()=>setPFS(S.pfs-1));_('pI').addEventListener('
 _('bTheme').addEventListener('click',()=>{
   document.documentElement.classList.toggle('light');
   _('bTheme').textContent = document.documentElement.classList.contains('light') ? '\u263E' : '\u2606';
+});
+_('bCopy').addEventListener('click',()=>{
+  navigator.clipboard.writeText(prev.textContent).then(()=>toast('Copied to clipboard')).catch(()=>{
+    // Fallback for non-HTTPS
+    const ta=document.createElement('textarea');ta.value=prev.textContent;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Copied to clipboard');
+  });
 });
 
 ed.addEventListener('input',()=>{saveEdit();sched();});
