@@ -395,6 +395,7 @@ function createCBSParser(config) {
   reg("upper", (s,m,a) => (a[0]??"").toUpperCase(), ["uppercase"]);
   reg("capitalize", (s,m,a) => { const v=a[0]??""; return v.charAt(0).toUpperCase()+v.slice(1); });
   reg("reverse", (s,m,a) => (a[0]??"").split("").reverse().join(""));
+  reg("tonumber", (s,m,a) => [...(a[0]??"")].filter(c => !isNaN(Number(c)) || c === '.').join(""));
   reg("spread", (s,m,a) => parseArray(a[0]??"[]").join(a[1]??", "));
   reg("makearray", (s,m,a) => makeArray(a), ["array","a"]);
   reg("arrayelement", (s,m,a) => { const arr=parseArray(a[0]??"[]"); const v=arr[parseInt(a[1])||0]; return typeof v==="string"?v:JSON.stringify(v??""); });
@@ -962,11 +963,7 @@ function flattenPreset(){
   S.promptTemplate.forEach((it,i)=>{
     const label='--- ['+i+'] '+it.type.toUpperCase()+(it.type2?' ('+it.type2+')':'')+(it.role?' ['+it.role+']':'')+(it.name?' "'+it.name+'"':'')+' ---';
     if(isEd(it)&&it.text){
-      // Parse CBS with current toggle values
-      try{
-        const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{}});
-        parts.push(label+'\n'+p.parse(it.text));
-      }catch(e){parts.push(label+'\n'+it.text);}
+      parts.push(label+'\n'+it.text);
     }else{
       parts.push(label+'\n['+pLabel(it)+']');
     }
