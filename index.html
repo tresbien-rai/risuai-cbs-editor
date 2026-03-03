@@ -129,7 +129,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .sb.d:hover{color:var(--err);border-color:var(--err)}
 .sb.ad{color:var(--ok)}.sb.ad:hover{border-color:var(--ok)}
 
-.cpta{width:100%;height:70px;background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:5px;border-radius:3px;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;font-size:var(--pfs);resize:vertical;outline:none}
+.cpta{width:100%;min-height:70px;height:140px;background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:5px;border-radius:3px;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;font-size:var(--pfs);resize:vertical;outline:none}
 .cpta:focus{border-color:var(--accent)}.cpta::placeholder{color:var(--border2)}
 .cpg{margin-bottom:6px;border:1px solid var(--border);border-radius:4px;overflow:hidden}
 .cpgt{padding:4px 7px;background:var(--bg2);font-size:var(--pfs);font-weight:700;color:var(--fg);font-family:'Noto Sans KR',sans-serif;border-bottom:1px solid var(--border)}
@@ -209,6 +209,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
         <div class="tcont" id="tcState" style="display:none"></div>
       </div>
     </div>
+
+    <div class="vd nosel" id="lvDiv"></div>
 
     <div class="center" id="ctr">
       <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span></div>
@@ -810,6 +812,9 @@ function parseControlPanel(text) {
         const options = parts[3].split(',').map(o => o.trim());
         const item = { type: 'select', varname, label, options };
         if (currentGroup) currentGroup.items.push(item); else items.push(item);
+      } else if (parts.length >= 3 && parts[2] === 'text') {
+        const item = { type: 'text', varname, label };
+        if (currentGroup) currentGroup.items.push(item); else items.push(item);
       } else {
         const item = { type: 'toggle', varname, label };
         if (currentGroup) currentGroup.items.push(item); else items.push(item);
@@ -822,8 +827,8 @@ function parseControlPanel(text) {
 function flattenPanelItems(parsed) {
   const flat = [];
   for (const item of parsed) {
-    if (item.type === 'group') { for (const sub of item.items) { if (sub.type==='select'||sub.type==='toggle') flat.push(sub); } }
-    else if (item.type==='select'||item.type==='toggle') flat.push(item);
+    if (item.type === 'group') { for (const sub of item.items) { if (sub.type==='select'||sub.type==='toggle'||sub.type==='text') flat.push(sub); } }
+    else if (item.type==='select'||item.type==='toggle'||item.type==='text') flat.push(item);
   }
   return flat;
 }
@@ -1005,8 +1010,14 @@ _('bFlat').addEventListener('click',()=>{
   document.addEventListener('mousemove',e=>{if(!g)return;b.style.height=Math.max(80,Math.min(l.offsetHeight-60,sh-(e.clientY-sy)))+'px';});
   document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
 })();
+(function(){
+  const d=_('lvDiv'),lp=_('left');let g=false,sx,sw;
+  d.addEventListener('mousedown',e=>{g=true;sx=e.clientX;sw=lp.offsetWidth;document.body.style.cursor='col-resize';e.preventDefault();});
+  document.addEventListener('mousemove',e=>{if(!g)return;lp.style.width=Math.max(140,Math.min(500,sw+(e.clientX-sx)))+'px';});
+  document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
+})();
 
-_('bSide').addEventListener('click',()=>{S.sideOpen=!S.sideOpen;_('left').classList.toggle('collapsed',!S.sideOpen);});
+_('bSide').addEventListener('click',()=>{S.sideOpen=!S.sideOpen;_('left').classList.toggle('collapsed',!S.sideOpen);_('lvDiv').style.display=S.sideOpen?'':'none';});
 _('fD').addEventListener('click',()=>setFS(S.fs-1));_('fI').addEventListener('click',()=>setFS(S.fs+1));
 _('pD').addEventListener('click',()=>setPFS(S.pfs-1));_('pI').addEventListener('click',()=>setPFS(S.pfs+1));
 _('bTheme').addEventListener('click',()=>{
@@ -1077,7 +1088,7 @@ function renderNav(){
 function applyPanel(txt){
   S.panelText=txt;S.panelParsed=parseControlPanel(txt);
   const fl=flattenPanelItems(S.panelParsed),nv={};
-  for(const it of fl)nv[it.varname]=S.panelValues[it.varname]??'0';
+  for(const it of fl)nv[it.varname]=S.panelValues[it.varname]??(it.type==='text'?'':'0');
   S.panelValues=nv;
 }
 
@@ -1089,6 +1100,7 @@ function renderPanel(){
   tc.panel.innerHTML=h;
   _('pApp')?.addEventListener('click',()=>{applyPanel(_('pSrc')?.value??'');renderPanel();sched();});
   tc.panel.querySelectorAll('[data-cs]').forEach(s=>{s.addEventListener('change',e=>{S.panelValues[e.target.dataset.cs]=e.target.value;sched();});});
+  tc.panel.querySelectorAll('[data-cx]').forEach(s=>{s.addEventListener('input',e=>{S.panelValues[e.target.dataset.cx]=e.target.value;sched();});});
   tc.panel.querySelectorAll('[data-ct]').forEach(b=>{
     b.addEventListener('click',e=>{const v=e.currentTarget.dataset.ct;S.panelValues[v]=S.panelValues[v]==='1'?'0':'1';e.currentTarget.classList.toggle('on',S.panelValues[v]==='1');sched();});
   });
@@ -1108,6 +1120,10 @@ function rPI(items){
       h+='<div class="cpi"><span class="cpl">'+escH(it.label)+'</span>';
       h+='<button class="ts '+(on?'on':'')+'" data-ct="'+escH(it.varname)+'"></button>';
       h+='<span class="cpv">'+(on?'1':'0')+'</span></div>';
+    }else if(it.type==='text'){
+      h+='<div class="cpi"><span class="cpl">'+escH(it.label)+'</span>';
+      h+='<input class="ci" style="max-width:120px" value="'+escH(S.panelValues[it.varname]??'')+'" data-cx="'+escH(it.varname)+'" placeholder="...">';
+      h+='</div>';
     }
   }
   return h;
