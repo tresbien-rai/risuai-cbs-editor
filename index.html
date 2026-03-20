@@ -319,7 +319,7 @@ function createCBSParser(config) {
   const M = new Map();
   const reg = (name, cb, al=[]) => { M.set(name.toLowerCase().replace(/[\s_-]/g,""), cb); al.forEach(a => M.set(a.toLowerCase().replace(/[\s_-]/g,""), cb)); };
   const gv = k => vars[k] ?? "";
-  const gt = k => toggles[k] ?? "";
+  const gt = k => vars['toggle_' + k] ?? toggles[k] ?? "";
 
   reg("char", () => charName, ["bot"]);
   reg("user", () => userName);
