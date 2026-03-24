@@ -35,7 +35,3 @@ Refer to the [RisuAI documentation](https://risuai.net) for the full CBS syntax 
 - `{{calc::expression}}`, `{{? expression}}`
 - `{{#pure}}...{{/pure}}`, `{{#escape}}...{{/escape}}`
 - `{{#func name args}}...{{/func}}` + `{{call::name::values}}`
-
-## License
-
-MIT
