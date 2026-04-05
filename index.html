@@ -213,7 +213,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
     <div class="vd nosel" id="lvDiv"></div>
 
     <div class="center" id="ctr">
-      <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span></div>
+      <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span><span style="flex:1"></span><span id="fieldSw" style="display:none"></span></div>
       <div class="diag" id="diag"></div>
       <div class="econtainer">
         <div class="ehigh" id="hl"></div>
@@ -843,7 +843,7 @@ const S = {
   preset:null, presetName:'', promptTemplate:[], activeIdx:-1,
   manualVars:[], persona:'', bTab:'panel',
   lastVars:{}, parseErr:null,
-  panelText:'', panelParsed:[], panelValues:{},
+  panelText:'', panelParsed:[], panelValues:{}, panelHeight:null, activeField:null,
   mode:'free', fs:13, pfs:13, sideOpen:true
 };
 
@@ -910,14 +910,30 @@ function update(){
 let ut;function sched(){clearTimeout(ut);ut=setTimeout(update,80);}
 
 function crumb(){
+  const sw=_('fieldSw');
   if(S.mode==='prompt'&&S.activeIdx>=0){
     const it=S.promptTemplate[S.activeIdx],rl=it.role?' ['+it.role+']':'';
     eCrumb.textContent=S.presetName+' \u2192 #'+S.activeIdx+' '+pLabel(it)+rl;
-  }else eCrumb.textContent=S.presetName||'';
+    const fs=itFields(it);
+    if(fs.length>1){
+      let h='<select class="ci" style="font-size:9px;padding:2px 4px;max-width:120px">';
+      fs.forEach(f=>{h+='<option value="'+f+'"'+(f===S.activeField?' selected':'')+'>'+f+'</option>';});
+      h+='</select>';
+      sw.innerHTML=h;sw.style.display='';
+      sw.querySelector('select').addEventListener('change',e=>{
+        saveEdit();S.activeField=e.target.value;
+        ed.value=itText(it,S.activeField);update();
+      });
+    }else{sw.style.display='none';sw.innerHTML='';}
+  }else{eCrumb.textContent=S.presetName||'';sw.style.display='none';sw.innerHTML='';}
 }
 
 function saveEdit(){
-  if(S.mode==='prompt'&&S.activeIdx>=0&&S.promptTemplate[S.activeIdx])S.promptTemplate[S.activeIdx].text=ed.value;
+  if(S.mode==='prompt'&&S.activeIdx>=0&&S.promptTemplate[S.activeIdx]){
+    const it=S.promptTemplate[S.activeIdx];
+    const f=S.activeField||itFields(it)[0];
+    if(f)it[f]=ed.value;
+  }
   if(S.preset&&S.mode==='free')S.preset.mainPrompt=ed.value;
 }
 
@@ -936,10 +952,10 @@ function loadPreset(pr){
       else S.manualVars.push({key:k,value:v});
     }
   }
-  S.activeIdx=-1;
+  S.activeIdx=-1;S.activeField=null;
   if(S.promptTemplate.length>0){
-    const i=S.promptTemplate.findIndex(p=>isEd(p)&&p.text&&p.text.length>0);
-    if(i!==-1){S.activeIdx=i;ed.value=S.promptTemplate[i].text;S.mode='prompt';}
+    const i=S.promptTemplate.findIndex(p=>isEd(p)&&itFields(p).some(f=>p[f]&&p[f].length>0));
+    if(i!==-1){S.activeIdx=i;S.activeField=itFields(S.promptTemplate[i])[0];ed.value=itText(S.promptTemplate[i],S.activeField);S.mode='prompt';}
   }
   if(S.activeIdx===-1&&pr.mainPrompt){ed.value=pr.mainPrompt;S.mode='free';}
   crumb();update();renderNav();
@@ -959,13 +975,25 @@ function buildExport(){
 function flattenPreset(){
   saveEdit();
   const parts=[];
+  if(S.panelText&&S.panelText.trim()){
+    parts.push('=== CUSTOM TOGGLES ===\n'+S.panelText.trim());
+  }
   if(!S.promptTemplate.length){parts.push(ed.value);return parts.join('\n\n');}
   S.promptTemplate.forEach((it,i)=>{
-    const label='--- ['+i+'] '+it.type.toUpperCase()+(it.type2?' ('+it.type2+')':'')+(it.role?' ['+it.role+']':'')+(it.name?' "'+it.name+'"':'')+' ---';
-    if(isEd(it)&&it.text){
-      parts.push(label+'\n'+it.text);
+    const baseLabel='['+i+'] '+it.type.toUpperCase()+(it.type2?' ('+it.type2+')':'')+(it.role?' ['+it.role+']':'')+(it.name?' "'+it.name+'"':'');
+    if(isEd(it)){
+      const fs=itFields(it);
+      const populated=fs.filter(f=>it[f]&&it[f].length>0);
+      if(populated.length===0){
+        parts.push('--- '+baseLabel+' ---\n['+pLabel(it)+']');
+      }else{
+        populated.forEach(f=>{
+          const suffix=fs.length>1?' ('+f+')':'';
+          parts.push('--- '+baseLabel+suffix+' ---\n'+it[f]);
+        });
+      }
     }else{
-      parts.push(label+'\n['+pLabel(it)+']');
+      parts.push('--- '+baseLabel+' ---\n['+pLabel(it)+']');
     }
   });
   return parts.join('\n\n');
@@ -1045,7 +1073,16 @@ _('lTbar').addEventListener('click',e=>{
 // ============================================================
 // Prompt Navigator
 // ============================================================
-function isEd(it){return it.type==='plain'||it.type==='jailbreak'||it.type==='cot'||it.type==='chatML';}
+function isEd(it){return it.type==='plain'||it.type==='jailbreak'||it.type==='cot'||it.type==='chatML'||it.type==='persona'||it.type==='description'||it.type==='lorebook'||it.type==='postEverything'||it.type==='memory'||it.type==='authornote';}
+
+// Which field holds the editable text for this item type?
+function itFields(it){
+  if(it.type==='plain'||it.type==='jailbreak'||it.type==='cot'||it.type==='chatML')return ['text'];
+  if(it.type==='authornote')return ['innerFormat','defaultText'];
+  if(it.type==='persona'||it.type==='description'||it.type==='lorebook'||it.type==='postEverything'||it.type==='memory')return ['innerFormat'];
+  return [];
+}
+function itText(it,field){ return it[field||itFields(it)[0]]||''; }
 
 function pLabel(it){
   if(it.name)return it.name;
@@ -1066,14 +1103,17 @@ function renderNav(){
     h+='<div class="pi'+(a?' a':'')+(!e?' s':'')+'" '+(e?'data-i="'+i+'"':'')+'>';
     h+='<span class="ix">'+i+'</span><span class="pt '+t+'">'+escH(it.type)+'</span>';
     h+='<span class="pn">'+escH(pLabel(it))+'</span>';
-    if(e&&it.text)h+='<span class="pm">'+(it.text.length>999?Math.round(it.text.length/1000)+'k':it.text.length)+'</span>';
+    if(e){const tl=itFields(it).reduce((s,f)=>s+(it[f]?it[f].length:0),0);if(tl)h+='<span class="pm">'+(tl>999?Math.round(tl/1000)+'k':tl)+'</span>';}
     h+='</div>';
   });
   navBody.innerHTML=h;
   navBody.querySelectorAll('.pi[data-i]').forEach(el=>{
     el.addEventListener('click',()=>{
       const i=parseInt(el.dataset.i);saveEdit();
-      S.activeIdx=i;S.mode='prompt';ed.value=S.promptTemplate[i].text||'';
+      S.activeIdx=i;S.mode='prompt';
+      const it=S.promptTemplate[i];
+      S.activeField=itFields(it)[0];
+      ed.value=itText(it,S.activeField);
       crumb();update();renderNav();
     });
   });
@@ -1091,11 +1131,15 @@ function applyPanel(txt){
 
 function renderPanel(){
   let h='<div class="sec"><div class="st">Custom Toggles</div>';
-  h+='<textarea class="cpta" id="pSrc" placeholder="Paste Custom Toggles...">'+escH(S.panelText)+'</textarea>';
+  const hStyle=S.panelHeight?' style="height:'+S.panelHeight+'px"':'';
+  h+='<textarea class="cpta" id="pSrc"'+hStyle+' placeholder="Paste Custom Toggles...">'+escH(S.panelText)+'</textarea>';
   h+='<div style="margin-top:3px"><button class="sb ad" id="pApp">Apply</button></div></div>';
   if(S.panelParsed.length>0)h+=rPI(S.panelParsed);
   tc.panel.innerHTML=h;
   _('pApp')?.addEventListener('click',()=>{applyPanel(_('pSrc')?.value??'');renderPanel();sched();});
+  // Persist textarea resize
+  const ta=_('pSrc');
+  if(ta){new ResizeObserver(()=>{S.panelHeight=ta.offsetHeight;}).observe(ta);}
   tc.panel.querySelectorAll('[data-cs]').forEach(s=>{s.addEventListener('change',e=>{S.panelValues[e.target.dataset.cs]=e.target.value;sched();});});
   tc.panel.querySelectorAll('[data-cx]').forEach(s=>{s.addEventListener('input',e=>{S.panelValues[e.target.dataset.cx]=e.target.value;sched();});});
   tc.panel.querySelectorAll('[data-ct]').forEach(b=>{
