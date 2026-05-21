@@ -9,7 +9,13 @@
 <script src="https://cdn.jsdelivr.net/npm/fflate/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack/dist.es5+umd/msgpack.min.js"></script>
 <style>
-:root{--fs:13px;--pfs:13px;
+:root{--fs:13px;--pfs:13px;--us:1;
+  --uxs:calc(8px * var(--us));
+  --us9:calc(9px * var(--us));
+  --us10:calc(10px * var(--us));
+  --us11:calc(11px * var(--us));
+  --us12:calc(12px * var(--us));
+  --us13:calc(13px * var(--us));
   /* Theme colors */
   --bg0:#0e0f14;--bg1:#13141a;--bg2:#1a1b24;--border:#2a2d3a;--border2:#3a3d4a;
   --fg:#c8ccd4;--fg2:#5c6370;--fg3:#3a3d4a;--accent:#61afef;--ok:#98c379;--err:#e06c75;--warn:#e5c07b;--purple:#c678dd;--cyan:#56b6c2;--orange:#d19a66;--muted:#abb2bf;
@@ -44,11 +50,46 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .hdr{display:flex;align-items:center;padding:5px 10px;background:var(--bg2);border-bottom:1px solid var(--border);gap:7px;flex-shrink:0;flex-wrap:wrap}
 .main{flex:1;display:flex;overflow:hidden}
 
+/* Work area: editor+preview on top, optional drawer on bottom */
+.work-area{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.work-top{flex:1;display:flex;min-height:0;overflow:hidden}
+.drawer-hd{height:4px;background:var(--bg2);cursor:row-resize;flex-shrink:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center}
+.drawer-hd::after{content:'';width:24px;height:2px;background:var(--border2);border-radius:1px}
+.drawer{height:320px;display:flex;flex-direction:column;flex-shrink:0;background:var(--bg1);overflow:hidden}
+.drawer-bar{padding:5px 10px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.drawer-title{font-size:var(--us10);font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.8px}
+.drawer-search{background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:3px 8px;border-radius:3px;font-family:inherit;font-size:var(--us11);width:280px;outline:none}
+.drawer-search:focus{border-color:var(--accent)}
+.drawer-body{flex:1;display:flex;overflow:hidden;min-height:0}
+.ref-nav{width:220px;flex-shrink:0;background:var(--bg1);border-right:1px solid var(--border);overflow-y:auto;padding:4px 0}
+.ref-cat{padding:4px 10px;font-size:var(--us10);font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px}
+.ref-cat:first-child{margin-top:0}
+.ref-item{padding:3px 14px;font-size:var(--us11);color:var(--fg);cursor:pointer;border-left:2px solid transparent;font-family:'JetBrains Mono',monospace}
+.ref-item:hover{background:var(--bg2);color:var(--accent)}
+.ref-item.active{background:var(--bg2);color:var(--accent);border-left-color:var(--accent)}
+.ref-content{flex:1;overflow-y:auto;padding:12px 18px;font-size:var(--pfs);line-height:1.6}
+.ref-content h2{font-family:'JetBrains Mono',monospace;font-size:calc(var(--pfs) + 4px);color:var(--accent);margin:0 0 4px;font-weight:700}
+.ref-content .sig{font-family:'JetBrains Mono',monospace;color:var(--fg2);margin-bottom:8px;font-size:calc(var(--pfs) - 1px)}
+.ref-content .aliases{color:var(--fg3);font-size:calc(var(--pfs) - 2px);margin-bottom:8px}
+.ref-content .aliases code{font-family:'JetBrains Mono',monospace;color:var(--purple)}
+.ref-content p{margin:6px 0}
+.ref-content .ex-block{margin:10px 0}
+.ref-content .ex-label{font-size:calc(var(--pfs) - 2px);color:var(--fg2);text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
+.ref-content .ex-code{font-family:'JetBrains Mono',monospace;background:var(--bg0);border:1px solid var(--border);border-radius:3px;padding:6px 10px;font-size:calc(var(--pfs) - 1px);white-space:pre-wrap;color:var(--fg);overflow-x:auto}
+.ref-content .ex-out{font-family:'Noto Sans KR','JetBrains Mono',monospace;background:color-mix(in srgb,var(--ok) 8%,transparent);border-left:2px solid var(--ok);padding:4px 10px;font-size:calc(var(--pfs) - 1px);color:var(--fg);margin-top:3px;white-space:pre-wrap;overflow-x:auto}
+.ref-content .note-box{background:color-mix(in srgb,var(--warn) 8%,transparent);border-left:2px solid var(--warn);padding:6px 10px;font-size:calc(var(--pfs) - 1px);color:var(--fg);margin:8px 0}
+.ref-content code.inline{font-family:'JetBrains Mono',monospace;background:var(--bg2);padding:1px 5px;border-radius:2px;font-size:calc(var(--pfs) - 1px);color:var(--purple)}
+.ref-content .related{margin-top:14px;padding-top:8px;border-top:1px solid var(--border);font-size:calc(var(--pfs) - 1px);color:var(--fg2)}
+.ref-content .related a{color:var(--accent);text-decoration:none;cursor:pointer;margin-right:8px;font-family:'JetBrains Mono',monospace}
+.ref-content .related a:hover{text-decoration:underline}
+.ref-empty{color:var(--fg3);padding:20px;text-align:center;font-size:var(--pfs)}
+.ref-item .hit{background:color-mix(in srgb,var(--warn) 25%,transparent);color:var(--fg);padding:0 2px;border-radius:2px}
+
 /* Left panel: prompt nav (top) + control panel tabs (bottom) */
 .left{width:260px;display:flex;flex-direction:column;border-right:1px solid var(--border);flex-shrink:0;background:var(--bg1);overflow:hidden}
 .left.collapsed{width:0;min-width:0;border-right:none;overflow:hidden}
 .left-top{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:60px}
-.left-top-hdr{padding:5px 8px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0}
+.left-top-hdr{padding:5px 8px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:var(--us10);font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0}
 .left-top-body{flex:1;overflow-y:auto;padding:4px 6px}
 
 .left-hd{height:4px;background:var(--bg2);cursor:row-resize;flex-shrink:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:center}
@@ -60,7 +101,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 
 /* Center: editor */
 .center{flex:1;display:flex;flex-direction:column;min-width:0}
-.ebar{padding:4px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:11px;color:var(--fg2);display:flex;align-items:center;gap:6px;flex-shrink:0}
+.ebar{padding:4px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:var(--us11);color:var(--fg2);display:flex;align-items:center;gap:6px;flex-shrink:0}
 .ebar .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);flex-shrink:0}
 .ebar .dot.err{background:var(--err)}
 .ebar .crumb{color:var(--warn);font-weight:400}
@@ -75,48 +116,53 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 
 /* Right: preview only */
 .right{width:420px;display:flex;flex-direction:column;border-left:1px solid var(--border);flex-shrink:0;overflow:hidden}
-.right-hdr{padding:5px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0;display:flex;align-items:center;gap:6px}
+.right-hdr{padding:5px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:var(--us10);font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0;display:flex;align-items:center;gap:6px}
 .right-body{flex:1;overflow:auto;background:var(--bg1)}
 .preview{padding:12px 14px;line-height:1.7;white-space:pre-wrap;word-wrap:break-word;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;font-size:var(--fs)}
 
 /* ===== Components ===== */
-.htitle{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.3px}
-.htitle span{color:var(--fg2);font-weight:400;font-size:10px}
+.htitle{font-size:var(--us13);font-weight:700;color:var(--accent);letter-spacing:.3px}
+.htitle span{color:var(--fg2);font-weight:400;font-size:var(--us10)}
 .hsep{width:1px;height:16px;background:var(--border)}
-.hl{color:var(--fg2);font-size:10px}
-.hi{background:var(--bg1);border:1px solid var(--border);color:var(--fg);padding:2px 6px;border-radius:3px;font-family:inherit;font-size:11px;width:80px;outline:none}
+.hl{color:var(--fg2);font-size:var(--us10)}
+.hi{background:var(--bg1);border:1px solid var(--border);color:var(--fg);padding:2px 6px;border-radius:3px;font-family:inherit;font-size:var(--us11);width:80px;outline:none}
 .hi:focus{border-color:var(--accent)}
-.hb{background:var(--bg2);border:1px solid var(--border);color:var(--accent);padding:3px 8px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600;transition:all .12s}
+.hb{background:var(--bg2);border:1px solid var(--border);color:var(--accent);padding:3px 8px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:var(--us10);font-weight:600;transition:all .12s}
 .hb:hover{background:var(--accent);color:var(--bg0)}
 .hb.g{color:var(--ok)}.hb.g:hover{background:var(--ok);color:var(--bg0)}
-.hb.p{color:var(--purple);font-size:12px;padding:3px 5px}.hb.p:hover{background:var(--purple);color:var(--bg0)}
+.hb.p{color:var(--purple);font-size:var(--us12);padding:3px 5px}.hb.p:hover{background:var(--purple);color:var(--bg0)}
 
 .fc{display:flex;align-items:center;gap:3px}
-.fc button{background:var(--bg2);border:1px solid var(--border);color:var(--fg2);width:18px;height:18px;border-radius:3px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}
+.fc button{background:var(--bg2);border:1px solid var(--border);color:var(--fg2);width:18px;height:18px;border-radius:3px;cursor:pointer;font-size:var(--us11);display:flex;align-items:center;justify-content:center}
 .fc button:hover{color:var(--fg);border-color:var(--border2)}
-.fc span{color:var(--fg2);font-size:10px;min-width:18px;text-align:center}
+.fc span{color:var(--fg2);font-size:var(--us10);min-width:18px;text-align:center}
+.dd-wrap{position:relative;display:inline-block}
+.dd-menu{position:absolute;top:calc(100% + 4px);right:0;background:var(--bg1);border:1px solid var(--border);border-radius:4px;padding:6px 8px;display:none;flex-direction:column;gap:5px;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.3);min-width:140px}
+.dd-menu.open{display:flex}
+.dd-row{display:flex;align-items:center;justify-content:space-between;gap:10px;white-space:nowrap}
+.dd-lbl{color:var(--fg2);font-size:var(--us10);font-weight:500}
 
-.tb{padding:5px 9px;background:transparent;border:none;color:var(--fg2);cursor:pointer;font-family:inherit;font-size:11px;font-weight:500;border-bottom:2px solid transparent;transition:all .12s}
+.tb{padding:5px 9px;background:transparent;border:none;color:var(--fg2);cursor:pointer;font-family:inherit;font-size:var(--us11);font-weight:500;border-bottom:2px solid transparent;transition:all .12s}
 .tb:hover{color:var(--fg)}
 .tb.a{color:var(--accent);border-bottom-color:var(--accent)}
 
 /* Prompt list */
-.pi{display:flex;align-items:center;gap:3px;padding:3px 5px;margin-bottom:2px;background:var(--bg0);border:1px solid transparent;border-radius:3px;cursor:pointer;transition:all .1s;font-size:10px}
+.pi{display:flex;align-items:center;gap:3px;padding:3px 5px;margin-bottom:2px;background:var(--bg0);border:1px solid transparent;border-radius:3px;cursor:pointer;transition:all .1s;font-size:var(--us10)}
 .pi:hover{border-color:var(--border)}.pi.a{border-color:var(--accent);background:var(--bg1)}
 .pi.s{opacity:.3;cursor:default}
-.pi .ix{color:var(--border2);font-size:8px;width:14px;text-align:right;flex-shrink:0;font-family:monospace}
-.pt{font-size:8px;font-weight:700;padding:1px 3px;border-radius:2px;text-transform:uppercase;flex-shrink:0}
+.pi .ix{color:var(--border2);font-size:var(--uxs);width:14px;text-align:right;flex-shrink:0;font-family:monospace}
+.pt{font-size:var(--uxs);font-weight:700;padding:1px 3px;border-radius:2px;text-transform:uppercase;flex-shrink:0}
 .pt.plain{background:var(--badge-plain-bg);color:var(--ok)}.pt.jailbreak{background:var(--badge-jb-bg);color:var(--err)}
 .pt.cot{background:var(--badge-an-bg);color:var(--warn)}.pt.persona{background:var(--badge-persona-bg);color:var(--accent)}
 .pt.description{background:var(--badge-desc-bg);color:var(--cyan)}.pt.lorebook{background:var(--badge-lore-bg);color:var(--purple)}
 .pt.chat{background:var(--border);color:var(--fg)}.pt.authornote{background:var(--badge-an-bg);color:var(--orange)}
 .pt.memory{background:var(--badge-plain-bg);color:var(--ok)}.pt.posteverything,.pt.chatml,.pt.cache{background:var(--border);color:var(--muted)}
 .pn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
-.pm{color:var(--fg2);font-size:8px;flex-shrink:0}
+.pm{color:var(--fg2);font-size:var(--uxs);flex-shrink:0}
 
 /* Control panel */
 .sec{margin-bottom:10px}
-.st{font-size:10px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.st{font-size:var(--us10);font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
 .rw{display:flex;gap:4px;margin-bottom:3px;align-items:center}
 .ci{background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:3px 5px;border-radius:3px;font-family:inherit;font-size:var(--pfs);flex:1;outline:none;min-width:0}
 .ci:focus{border-color:var(--accent)}
@@ -124,13 +170,24 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .ts.on{background:var(--accent)}
 .ts::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:var(--fg);top:2px;left:2px;transition:transform .2s}
 .ts.on::after{transform:translateX(14px)}
-.sb{background:var(--bg2);border:1px solid var(--border);color:var(--fg2);padding:2px 5px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:10px;transition:all .12s;white-space:nowrap}
+.sb{background:var(--bg2);border:1px solid var(--border);color:var(--fg2);padding:2px 5px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:var(--us10);transition:all .12s;white-space:nowrap}
 .sb:hover{color:var(--fg);border-color:var(--border2)}
 .sb.d:hover{color:var(--err);border-color:var(--err)}
 .sb.ad{color:var(--ok)}.sb.ad:hover{border-color:var(--ok)}
 
 .cpta{width:100%;min-height:70px;height:140px;background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:5px;border-radius:3px;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;font-size:var(--pfs);resize:vertical;outline:none}
 .cpta:focus{border-color:var(--accent)}.cpta::placeholder{color:var(--border2)}
+.warn-list{margin-top:4px;border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent);border-radius:3px;padding:4px 6px;font-size:var(--pfs);color:var(--warn)}
+.warn-list .w-item{display:flex;gap:6px;padding:2px 0;line-height:1.4}
+.warn-list .w-ln{color:var(--fg3);flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.ref-btn{font-size:var(--us9);padding:2px 6px;background:var(--bg2);color:var(--fg2);border:1px solid var(--border);border-radius:3px;cursor:pointer}
+.ref-btn:hover{color:var(--fg);border-color:var(--accent)}
+.ref-panel{margin-top:4px;border:1px solid var(--border);background:var(--bg0);border-radius:3px;padding:6px 8px;font-size:var(--pfs);line-height:1.5;color:var(--fg);max-height:300px;overflow:auto}
+.ref-panel h4{margin:6px 0 3px;font-size:var(--pfs);color:var(--accent);font-weight:600}
+.ref-panel h4:first-child{margin-top:0}
+.ref-panel code{font-family:'JetBrains Mono',monospace;background:var(--bg2);padding:1px 4px;border-radius:2px;font-size:calc(var(--pfs) - 1px);color:var(--fg)}
+.ref-panel .ex{display:block;font-family:'JetBrains Mono',monospace;background:var(--bg2);padding:3px 6px;border-radius:2px;font-size:calc(var(--pfs) - 1px);margin:2px 0;white-space:pre;color:var(--fg)}
+.ref-panel .note{color:var(--fg2);font-size:calc(var(--pfs) - 1px);font-style:italic}
 .cpg{margin-bottom:6px;border:1px solid var(--border);border-radius:4px;overflow:hidden}
 .cpgt{padding:4px 7px;background:var(--bg2);font-size:var(--pfs);font-weight:700;color:var(--fg);font-family:'Noto Sans KR',sans-serif;border-bottom:1px solid var(--border)}
 .cpgb{padding:5px 7px}
@@ -140,11 +197,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .cpl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cps{background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:2px 3px;border-radius:3px;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;font-size:calc(var(--pfs) - 1px);outline:none;max-width:150px}
 .cps:focus{border-color:var(--accent)}
-.cpv{color:var(--border2);font-size:9px;font-family:monospace;width:10px;text-align:center}
-.cph{font-size:9px;color:var(--border2);margin-top:5px;line-height:1.3}
+.cpv{color:var(--border2);font-size:var(--us9);font-family:monospace;width:10px;text-align:center}
+.cph{font-size:var(--us9);color:var(--border2);margin-top:5px;line-height:1.3}
 
 .ib{padding:5px 8px;background:var(--bg0);border-radius:3px;border:1px solid var(--border)}
-.ir{display:flex;justify-content:space-between;padding:1px 0;font-size:10px}
+.ir{display:flex;justify-content:space-between;padding:1px 0;font-size:var(--us10)}
 .ik{color:var(--warn)}.iv{color:var(--ok)}
 
 .ce{color:var(--accent)}.cv{color:var(--warn)}.cm{color:var(--ok)}.cn{color:var(--err);font-weight:600}.cc{color:var(--fg2);font-style:italic}
@@ -158,12 +215,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .cb-err{color:var(--err);font-weight:700;text-decoration:wavy underline var(--err);text-underline-offset:3px}
 .cbs-warn{color:var(--orange);background:var(--warn-syntax-bg);border-radius:2px}
 /* Diagnostics bar */
-.diag{padding:3px 10px;background:var(--diag-bg);border-bottom:1px solid var(--diag-border);font-size:10px;color:var(--err);flex-shrink:0;display:none;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;line-height:1.5;max-height:60px;overflow-y:auto}
+.diag{padding:3px 10px;background:var(--diag-bg);border-bottom:1px solid var(--diag-border);font-size:var(--us10);color:var(--err);flex-shrink:0;display:none;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;line-height:1.5;max-height:60px;overflow-y:auto}
 .diag.show{display:block}
 .diag span{color:var(--warn);cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
 .diag span:hover{color:var(--accent)}
 
-.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--accent);color:var(--fg);padding:5px 14px;border-radius:4px;font-size:11px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--accent);color:var(--fg);padding:5px 14px;border-radius:4px;font-size:var(--us11);z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.show{opacity:1}.toast.err{border-color:var(--err);color:var(--err)}
 .nosel{-webkit-user-select:none;user-select:none}
 </style>
@@ -172,7 +229,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 <div class="app">
   <div class="hdr nosel">
     <button class="hb p" id="bSide" title="Toggle sidebar">&#9776;</button>
-    <div class="htitle">CBS Editor <span>v5</span></div>
+    <div class="htitle">CBS Editor <span>v6</span></div>
     <div class="hsep"></div>
     <button class="hb" id="bImp">Import</button>
     <button class="hb g" id="bExp">Export</button>
@@ -184,10 +241,15 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
     <span class="hl">{{user}}</span>
     <input class="hi" id="uN" value="USER">
     <div style="flex:1"></div>
-    <div class="fc"><span class="hl">Editor</span><button id="fD">-</button><span id="fL">13</span><button id="fI">+</button></div>
+    <div class="dd-wrap"><button class="hb" id="bFont" title="Font size settings">Aa</button>
+      <div class="dd-menu" id="ddFont">
+        <div class="dd-row"><span class="dd-lbl">Editor</span><div class="fc"><button id="fD">-</button><span id="fL">13</span><button id="fI">+</button></div></div>
+        <div class="dd-row"><span class="dd-lbl">Panel</span><div class="fc"><button id="pD">-</button><span id="pL">13</span><button id="pI">+</button></div></div>
+        <div class="dd-row"><span class="dd-lbl">UI</span><div class="fc"><button id="uD">-</button><span id="uL">100</span><button id="uI">+</button></div></div>
+      </div>
+    </div>
     <div class="hsep"></div>
-    <div class="fc"><span class="hl">Panel</span><button id="pD">-</button><span id="pL">13</span><button id="pI">+</button></div>
-    <div class="hsep"></div>
+    <button class="hb" id="bRef" title="Toggle CBS reference">&#x1F4D6;</button>
     <button class="hb" id="bTheme" title="Toggle light/dark mode">&#9788;</button>
   </div>
 
@@ -212,20 +274,38 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 
     <div class="vd nosel" id="lvDiv"></div>
 
-    <div class="center" id="ctr">
-      <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span><span style="flex:1"></span><span id="fieldSw" style="display:none"></span></div>
-      <div class="diag" id="diag"></div>
-      <div class="econtainer">
-        <div class="ehigh" id="hl"></div>
-        <textarea class="etxt" id="ed" spellcheck="false"></textarea>
+    <div class="work-area" id="workArea">
+      <div class="work-top" id="workTop">
+        <div class="center" id="ctr">
+          <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span><span style="flex:1"></span><span id="fieldSw" style="display:none"></span></div>
+          <div class="diag" id="diag"></div>
+          <div class="econtainer">
+            <div class="ehigh" id="hl"></div>
+            <textarea class="etxt" id="ed" spellcheck="false"></textarea>
+          </div>
+        </div>
+
+        <div class="vd nosel" id="vDiv"></div>
+
+        <div class="right" id="rp">
+          <div class="right-hdr nosel"><span>Preview</span><span style="flex:1"></span><span id="prevInfo" style="font-weight:400;color:var(--fg3);font-size:var(--us9)"></span><button class="hb" id="bCopy" style="margin-left:6px;font-size:var(--us9);padding:2px 6px" title="Copy preview text">Copy</button></div>
+          <div class="right-body"><div class="preview" id="prev"></div></div>
+        </div>
       </div>
-    </div>
 
-    <div class="vd nosel" id="vDiv"></div>
-
-    <div class="right" id="rp">
-      <div class="right-hdr nosel"><span>Preview</span><span style="flex:1"></span><span id="prevInfo" style="font-weight:400;color:var(--fg3);font-size:9px"></span><button class="hb" id="bCopy" style="margin-left:6px;font-size:9px;padding:2px 6px" title="Copy preview text">Copy</button></div>
-      <div class="right-body"><div class="preview" id="prev"></div></div>
+      <div class="drawer-hd nosel" id="drawerHD" style="display:none"></div>
+      <div class="drawer" id="drawer" style="display:none">
+        <div class="drawer-bar nosel">
+          <span class="drawer-title">CBS Reference</span>
+          <input class="drawer-search" id="refSearch" placeholder="Search functions, blocks, examples..." />
+          <span style="flex:1"></span>
+          <button class="hb" id="bRefClose" title="Close reference">&times;</button>
+        </div>
+        <div class="drawer-body">
+          <div class="ref-nav" id="refNav"></div>
+          <div class="ref-content" id="refContent"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -787,42 +867,67 @@ function downloadBlob(data, filename) {
 // ============================================================
 
 function parseControlPanel(text) {
+  if (!text) return [];
   const items = [];
-  const lines = text.trim().split('\n');
+  const warnings = [];
   let currentGroup = null;
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (line === '==groupEnd') {
-      if (currentGroup) { items.push(currentGroup); currentGroup = null; }
+  let lineNum = 0;
+  for (const line of text.split('\n')) {
+    lineNum++;
+    if (!line.trim()) continue;
+    const [key, value, type, option] = line.split('=');
+    // Group start (RisuAI: type === 'group', strict)
+    if (type === 'group') {
+      if (currentGroup) {
+        warnings.push({line: lineNum, msg: 'New group "'+(value||key||'')+'" opened while previous group "'+currentGroup.label+'" was still open. RisuAI auto-closes the previous group here.'});
+        items.push(currentGroup);
+      }
+      currentGroup = { type: 'group', label: value || key || '', items: [] };
       continue;
     }
-    const parts = line.split('=');
-    if (parts[0] === '' && parts.length >= 3) {
-      const label = parts[1], type = parts[2];
-      if (type === 'group') { currentGroup = { type: 'group', label, items: [] }; continue; }
-      if (type === 'divider') {
-        const item = { type: 'divider', label };
-        if (currentGroup) currentGroup.items.push(item); else items.push(item);
-        continue;
-      }
+    // Group end (RisuAI: type === 'groupEnd', strict, case-sensitive)
+    if (type === 'groupEnd') {
+      if (currentGroup) { items.push(currentGroup); currentGroup = null; }
+      else warnings.push({line: lineNum, msg: 'groupEnd without a matching open group.'});
+      continue;
     }
-    if (parts.length >= 2 && parts[0] !== '') {
-      const varname = parts[0], label = parts[1];
-      if (parts.length >= 4 && parts[2] === 'select') {
-        const options = parts[3].split(',').map(o => o.trim());
-        const item = { type: 'select', varname, label, options };
-        if (currentGroup) currentGroup.items.push(item); else items.push(item);
-      } else if (parts.length >= 3 && parts[2] === 'text') {
-        const item = { type: 'text', varname, label };
-        if (currentGroup) currentGroup.items.push(item); else items.push(item);
-      } else {
-        const item = { type: 'toggle', varname, label };
-        if (currentGroup) currentGroup.items.push(item); else items.push(item);
-      }
+    // Common typo: lowercase groupend (won't work in RisuAI)
+    if (type && type.toLowerCase() === 'groupend' && type !== 'groupEnd') {
+      warnings.push({line: lineNum, msg: '"'+type+'" is not recognized in RisuAI. Use "groupEnd" (capital E).'});
+      // Skip silently to match RisuAI (which treats this as just a malformed line)
+      continue;
+    }
+    // Divider
+    if (type === 'divider') {
+      const item = { type: 'divider', label: value || '' };
+      if (currentGroup) currentGroup.items.push(item); else items.push(item);
+      continue;
+    }
+    // Caption
+    if (type === 'caption' && value) {
+      const item = { type: 'caption', label: value };
+      if (currentGroup) currentGroup.items.push(item); else items.push(item);
+      continue;
+    }
+    // Need both key and value for select/text/textarea/toggle (matches RisuAI's `if(key && value)`)
+    if (!key || !value) continue;
+    if (type === 'select') {
+      const options = (option || '').split(',').map(o => o.trim());
+      const item = { type: 'select', varname: key, label: value, options };
+      if (currentGroup) currentGroup.items.push(item); else items.push(item);
+    } else if (type === 'text' || type === 'textarea') {
+      const item = { type: 'text', varname: key, label: value };
+      if (currentGroup) currentGroup.items.push(item); else items.push(item);
+    } else {
+      const item = { type: 'toggle', varname: key, label: value };
+      if (currentGroup) currentGroup.items.push(item); else items.push(item);
     }
   }
-  if (currentGroup) items.push(currentGroup);
+  if (currentGroup) {
+    warnings.push({line: lineNum, msg: 'Group "'+currentGroup.label+'" is never closed with groupEnd.'});
+    items.push(currentGroup);
+  }
+  items._warnings = warnings;
   return items;
 }
 function flattenPanelItems(parsed) {
@@ -843,8 +948,8 @@ const S = {
   preset:null, presetName:'', promptTemplate:[], activeIdx:-1,
   manualVars:[], persona:'', bTab:'panel',
   lastVars:{}, parseErr:null,
-  panelText:'', panelParsed:[], panelValues:{}, panelHeight:null, activeField:null,
-  mode:'free', fs:13, pfs:13, sideOpen:true
+  panelText:'', panelParsed:[], panelValues:{}, panelHeight:null, panelRefOpen:false, activeField:null,
+  mode:'free', fs:13, pfs:13, us:100, sideOpen:true
 };
 
 const _=$=>document.getElementById($);
@@ -852,11 +957,12 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{//::CBS Editor v5}}';
+ed.value='{{//::CBS Editor v6}}';
 
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');setTimeout(()=>toastEl.className='toast',2500);}
 function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;}
 function setPFS(v){S.pfs=Math.max(10,Math.min(18,v));document.documentElement.style.setProperty('--pfs',S.pfs+'px');_('pL').textContent=S.pfs;}
+function setUS(v){S.us=Math.max(80,Math.min(180,v));document.documentElement.style.setProperty('--us',(S.us/100).toString());_('uL').textContent=S.us;}
 
 function togVars(){
   const o={};
@@ -916,7 +1022,7 @@ function crumb(){
     eCrumb.textContent=S.presetName+' \u2192 #'+S.activeIdx+' '+pLabel(it)+rl;
     const fs=itFields(it);
     if(fs.length>1){
-      let h='<select class="ci" style="font-size:9px;padding:2px 4px;max-width:120px">';
+      let h='<select class="ci" style="font-size:var(--us9);padding:2px 4px;max-width:120px">';
       fs.forEach(f=>{h+='<option value="'+f+'"'+(f===S.activeField?' selected':'')+'>'+f+'</option>';});
       h+='</select>';
       sw.innerHTML=h;sw.style.display='';
@@ -1045,9 +1151,15 @@ _('bFlat').addEventListener('click',()=>{
 _('bSide').addEventListener('click',()=>{S.sideOpen=!S.sideOpen;_('left').classList.toggle('collapsed',!S.sideOpen);_('lvDiv').style.display=S.sideOpen?'':'none';});
 _('fD').addEventListener('click',()=>setFS(S.fs-1));_('fI').addEventListener('click',()=>setFS(S.fs+1));
 _('pD').addEventListener('click',()=>setPFS(S.pfs-1));_('pI').addEventListener('click',()=>setPFS(S.pfs+1));
+_('uD').addEventListener('click',()=>setUS(S.us-10));_('uI').addEventListener('click',()=>setUS(S.us+10));
 _('bTheme').addEventListener('click',()=>{
   document.documentElement.classList.toggle('light');
   _('bTheme').textContent = document.documentElement.classList.contains('light') ? '\u263E' : '\u2606';
+});
+_('bFont').addEventListener('click',e=>{e.stopPropagation();_('ddFont').classList.toggle('open');});
+document.addEventListener('click',e=>{
+  const m=_('ddFont');
+  if(m.classList.contains('open')&&!m.contains(e.target)&&e.target!==_('bFont'))m.classList.remove('open');
 });
 _('bCopy').addEventListener('click',()=>{
   navigator.clipboard.writeText(prev.textContent).then(()=>toast('Copied to clipboard')).catch(()=>{
@@ -1096,7 +1208,7 @@ function pLabel(it){
 }
 
 function renderNav(){
-  if(!S.promptTemplate.length){navBody.innerHTML='<div style="color:var(--fg3);padding:8px;font-size:10px;text-align:center;line-height:1.4">Import a preset to browse prompt items.</div>';return;}
+  if(!S.promptTemplate.length){navBody.innerHTML='<div style="color:var(--fg3);padding:8px;font-size:var(--us10);text-align:center;line-height:1.4">Import a preset to browse prompt items.</div>';return;}
   let h='';
   S.promptTemplate.forEach((it,i)=>{
     const e=isEd(it),a=i===S.activeIdx,t=it.type.toLowerCase().replace(/\s/g,'');
@@ -1130,13 +1242,22 @@ function applyPanel(txt){
 }
 
 function renderPanel(){
-  let h='<div class="sec"><div class="st">Custom Toggles</div>';
+  let h='<div class="sec"><div class="st" style="display:flex;align-items:center;gap:6px"><span>Custom Toggles</span><span style="flex:1"></span><button class="ref-btn" id="pRefBtn" title="Show Custom Toggles syntax">'+(S.panelRefOpen?'Hide':'Toggle Syntax')+'</button></div>';
+  if(S.panelRefOpen)h+=panelSyntaxRef();
   const hStyle=S.panelHeight?' style="height:'+S.panelHeight+'px"':'';
   h+='<textarea class="cpta" id="pSrc"'+hStyle+' placeholder="Paste Custom Toggles...">'+escH(S.panelText)+'</textarea>';
+  // Warnings
+  const warns=S.panelParsed._warnings||[];
+  if(warns.length){
+    h+='<div class="warn-list">';
+    warns.forEach(w=>{h+='<div class="w-item"><span class="w-ln">line '+w.line+'</span><span>'+escH(w.msg)+'</span></div>';});
+    h+='</div>';
+  }
   h+='<div style="margin-top:3px"><button class="sb ad" id="pApp">Apply</button></div></div>';
   if(S.panelParsed.length>0)h+=rPI(S.panelParsed);
   tc.panel.innerHTML=h;
   _('pApp')?.addEventListener('click',()=>{applyPanel(_('pSrc')?.value??'');renderPanel();sched();});
+  _('pRefBtn')?.addEventListener('click',()=>{S.panelRefOpen=!S.panelRefOpen;renderPanel();});
   // Persist textarea resize
   const ta=_('pSrc');
   if(ta){new ResizeObserver(()=>{S.panelHeight=ta.offsetHeight;}).observe(ta);}
@@ -1147,11 +1268,571 @@ function renderPanel(){
   });
 }
 
+function panelSyntaxRef(){
+  return '<div class="ref-panel">'+
+    '<h4>Format</h4>'+
+    'Each line: <code>key=label=type=options</code>. Empty lines ignored. Type field is required for most items.'+
+    '<h4>Toggle (default)</h4>'+
+    '<span class="ex">myvar=My Label</span>'+
+    'Creates an ON/OFF toggle. Stored as <code>toggle_myvar</code> in global variables.'+
+    '<h4>Select</h4>'+
+    '<span class="ex">myvar=My Label=select=opt1,opt2,opt3</span>'+
+    'Creates a dropdown. Stored as 0-indexed string ("0", "1", "2").'+
+    '<h4>Text input</h4>'+
+    '<span class="ex">myvar=My Label=text</span>'+
+    'Single-line text field. Use <code>textarea</code> for multi-line.'+
+    '<h4>Group (collapsible section)</h4>'+
+    '<span class="ex">=Group Title=group\nitem1=Item One\nitem2=Item Two\n=Group Title=groupEnd</span>'+
+    '<span class="note">groupEnd is case-sensitive in RisuAI. "groupend" or "GROUPEND" will not close the group.</span>'+
+    '<h4>Divider</h4>'+
+    '<span class="ex">=Section Name=divider</span>'+
+    '<h4>Caption (small text)</h4>'+
+    '<span class="ex">=Some descriptive text=caption</span>'+
+    '<h4>Usage in prompts (CBS)</h4>'+
+    '<span class="ex">{{getglobalvar::toggle_myvar}}\n{{#if_pure {{getglobalvar::toggle_myvar}} }}...{{/if}}\n{{#when::toggle::myvar}}...{{/when}}\n{{#when::myvar::tis::1}}...{{/when}}</span>'+
+    '<span class="note">toggle_ prefix is added automatically. Use the bare name in #when::toggle and #when::myvar::tis.</span>'+
+  '</div>';
+}
+
+// ============================================================
+// CBS Reference Drawer
+// ============================================================
+// CBS Reference Data
+// Categories: identity, variables, conditionals, blocks, calc, math, comparison, logic, string, array, dict, random, time, escape, context, comment, toggles
+
+const REF_DATA = [
+  // ============ IDENTITY & CONTEXT ============
+  { cat: 'Identity & Context', name: '{{char}}', aliases: ['bot'], sig: '{{char}}',
+    desc: 'Returns the character name.',
+    examples: [{code: '{{char}}', out: 'CharacterName'}] },
+  { cat: 'Identity & Context', name: '{{user}}', sig: '{{user}}',
+    desc: 'Returns the active user/persona name.',
+    examples: [{code: '{{user}}', out: 'UserName'}] },
+  { cat: 'Identity & Context', name: '{{persona}}', aliases: ['userpersona'], sig: '{{persona}}',
+    desc: 'Returns the active persona description text.',
+    examples: [{code: '{{persona}}', out: 'A young adventurer...'}] },
+  { cat: 'Identity & Context', name: '{{personality}}', aliases: ['charpersona'], sig: '{{personality}}',
+    desc: "Returns the character's personality section.",
+    examples: [{code: '{{personality}}'}] },
+  { cat: 'Identity & Context', name: '{{description}}', aliases: ['chardesc'], sig: '{{description}}',
+    desc: "Returns the character's description.",
+    examples: [{code: '{{description}}'}] },
+  { cat: 'Identity & Context', name: '{{scenario}}', sig: '{{scenario}}',
+    desc: 'Returns the scenario text.' },
+  { cat: 'Identity & Context', name: '{{exampledialogue}}', aliases: ['examplemessage'], sig: '{{exampledialogue}}',
+    desc: 'Returns example dialogues from the character card.' },
+  { cat: 'Identity & Context', name: '{{mainprompt}}', aliases: ['systemprompt'], sig: '{{mainprompt}}',
+    desc: 'Returns the main prompt / system prompt text.' },
+  { cat: 'Identity & Context', name: '{{jb}}', aliases: ['jailbreak'], sig: '{{jb}}',
+    desc: 'Returns the jailbreak prompt text.' },
+  { cat: 'Identity & Context', name: '{{globalnote}}', aliases: ['systemnote','ujb'], sig: '{{globalnote}}',
+    desc: 'Returns the global note text.' },
+  { cat: 'Identity & Context', name: '{{role}}', sig: '{{role}}',
+    desc: 'Returns the current message role (typically "char" or "user").' },
+  { cat: 'Identity & Context', name: '{{model}}', sig: '{{model}}',
+    desc: 'Returns the current model identifier.' },
+  { cat: 'Identity & Context', name: '{{axmodel}}', sig: '{{axmodel}}',
+    desc: 'Returns the auxiliary model identifier (used for utility tasks).' },
+  { cat: 'Identity & Context', name: '{{maxcontext}}', sig: '{{maxcontext}}',
+    desc: "Returns the model's maximum context size in tokens." },
+  { cat: 'Identity & Context', name: '{{chatindex}}', sig: '{{chatindex}}',
+    desc: 'Returns the current chat message index (0-based).' },
+  { cat: 'Identity & Context', name: '{{lastmessageid}}', aliases: ['lastmessageindex'], sig: '{{lastmessageid}}',
+    desc: 'Returns the ID/index of the last message.' },
+  { cat: 'Identity & Context', name: '{{isfirstmsg}}', sig: '{{isfirstmsg}}',
+    desc: 'Returns "1" if the current message is the first, "0" otherwise.' },
+  { cat: 'Identity & Context', name: '{{lastmessage}}', sig: '{{lastmessage}}',
+    desc: 'Returns the text of the last message.' },
+  { cat: 'Identity & Context', name: '{{previouscharchat}}', aliases: ['lastcharmessage'], sig: '{{previouscharchat}}',
+    desc: 'Returns the most recent character message text.' },
+  { cat: 'Identity & Context', name: '{{previoususerchat}}', aliases: ['lastusermessage'], sig: '{{previoususerchat}}',
+    desc: 'Returns the most recent user message text.' },
+  { cat: 'Identity & Context', name: '{{jbtoggled}}', sig: '{{jbtoggled}}',
+    desc: 'Returns "1" if the jailbreak prompt is currently enabled, "0" otherwise.' },
+  { cat: 'Identity & Context', name: '{{risu}}', sig: '{{risu}}',
+    desc: 'Returns a marker indicating RisuAI execution context.' },
+
+  // ============ VARIABLES ============
+  { cat: 'Variables', name: '{{getvar}}', sig: '{{getvar::name}}',
+    desc: 'Reads a regular variable. Returns empty string if not set.',
+    examples: [{code: '{{setvar::score::42}}Score: {{getvar::score}}', out: 'Score: 42'}] },
+  { cat: 'Variables', name: '{{setvar}}', sig: '{{setvar::name::value}}',
+    desc: 'Sets a regular variable. Returns empty string.',
+    examples: [{code: '{{setvar::hp::100}}{{getvar::hp}}', out: '100'}] },
+  { cat: 'Variables', name: '{{addvar}}', sig: '{{addvar::name::amount}}',
+    desc: 'Adds a numeric amount to an existing variable. Treats missing as 0.',
+    examples: [{code: '{{setvar::n::5}}{{addvar::n::3}}{{getvar::n}}', out: '8'}] },
+  { cat: 'Variables', name: '{{setdefaultvar}}', aliases: ['setdefault'], sig: '{{setdefaultvar::name::value}}',
+    desc: 'Sets a variable only if it has not been set yet. Useful for initialisation in templates.' },
+  { cat: 'Variables', name: '{{getglobalvar}}', sig: '{{getglobalvar::name}}',
+    desc: 'Reads a global chat variable (shared across the chat). Used for Custom Toggle values (with toggle_ prefix).',
+    examples: [{code: '{{getglobalvar::toggle_seq}}', out: '1'}] },
+  { cat: 'Variables', name: '{{tempvar}}', aliases: ['gettempvar'], sig: '{{tempvar::name}}',
+    desc: 'Reads a temporary variable. Tempvars exist only during the current parse/script execution and are cleared after.',
+    examples: [{code: '{{settempvar::roll::{{randint::1::6}}}}You rolled {{tempvar::roll}}.', out: 'You rolled 4.'}] },
+  { cat: 'Variables', name: '{{settempvar}}', sig: '{{settempvar::name::value}}',
+    desc: 'Sets a temporary variable. Returns empty string. Tempvars are scoped to the current parse only.',
+    note: 'Use tempvars (not regular vars) for randomised intermediate results so they do not pollute persistent storage.' },
+
+  // ============ CONDITIONAL BLOCKS ============
+  { cat: 'Conditional Blocks', name: '{{#if}}', sig: '{{#if condition}}...{{/if}}',
+    desc: 'Conditional block. The condition must resolve to literal "true" or "1" to render the contents. Trims leading/trailing whitespace from the content.',
+    examples: [
+      {code: '{{#if {{? {{getvar::hp}}>0}} }}Alive{{/if}}'},
+      {code: '{{#if {{equal::{{getvar::lang}}::ko}} }}안녕{{:else}}Hello{{/if}}'}
+    ],
+    note: 'Inner CBS resolves first, then #if evaluates the result. Use {{? expr}} for comparisons.' },
+  { cat: 'Conditional Blocks', name: '{{#if_pure}}', sig: '{{#if_pure condition}}...{{/if}}',
+    desc: 'Same as {{#if}} but does NOT trim whitespace from the contents. Useful when leading/trailing newlines matter.',
+    examples: [{code: '{{#if_pure {{getglobalvar::toggle_seq}} }}\n- Sequence Log\n{{/if}}'}] },
+  { cat: 'Conditional Blocks', name: '{{:else}}', sig: '{{:else}}',
+    desc: 'Else branch inside #if, #if_pure, or #when blocks. Renders when the condition is falsy.',
+    examples: [{code: '{{#if {{? {{getvar::hp}}>0}} }}Alive{{:else}}Defeated{{/if}}'}] },
+  { cat: 'Conditional Blocks', name: '{{#when}}', sig: '{{#when::value::op::compare}}...{{/when}}',
+    desc: 'Versatile conditional with many operators. Supports both {{#when expr}} (space form) and {{#when::a::op::b}} (operator form).',
+    examples: [
+      {code: '{{#when::{{getvar::lang}}::is::ko}}Korean{{:else}}Other{{/when}}'},
+      {code: '{{#when::toggle::seq}}SEQ on{{/when}}'},
+      {code: '{{#when::{{getvar::hp}}::>::50}}Healthy{{/when}}'}
+    ],
+    operators: [
+      ['is', 'string equality'],
+      ['isnot', 'string inequality'],
+      ['var', "truthy check on a regular variable (var:name)"],
+      ['vis', 'variable string equality (var:name == val)'],
+      ['visnot', 'variable string inequality'],
+      ['toggle', 'truthy check on toggle_<name>'],
+      ['tis', 'toggle equality (toggle_<name> == val)'],
+      ['tisnot', 'toggle inequality'],
+      ['>', 'numeric greater than'],
+      ['<', 'numeric less than'],
+      ['>=', 'numeric greater or equal'],
+      ['<=', 'numeric less or equal'],
+      ['and', 'logical and'],
+      ['or', 'logical or'],
+      ['not', 'logical not (single operand follows)'],
+      ['keep', 'force keep mode (does not trim whitespace)']
+    ] },
+
+  // ============ STRUCTURAL BLOCKS ============
+  { cat: 'Structural Blocks', name: '{{#each}}', sig: '{{#each array as item}}...{{/each}}',
+    desc: 'Iterates over an array. Inside the block, the variable name (after "as") holds the current item. Use {{arrayelement}} or array index inline.',
+    examples: [{code: '{{#each {{makearray::a::b::c}} as x}}- {{getvar::x}}\n{{/each}}', out: '- a\n- b\n- c\n'}],
+    note: '"as varname" required since the January 2026 RisuAI update.' },
+  { cat: 'Structural Blocks', name: '{{#pure}}', sig: '{{#pure}}...{{/pure}}',
+    desc: 'Prevents CBS parsing within the block. Use to show literal CBS in output (e.g., documentation, examples).',
+    examples: [{code: '{{#pure}}{{getvar::x}}{{/pure}}', out: '{{getvar::x}}'}] },
+  { cat: 'Structural Blocks', name: '{{#puredisplay}}', aliases: ['pure_display'], sig: '{{#puredisplay}}...{{/puredisplay}}',
+    desc: 'Like #pure but renders only in display, stripped from prompts sent to the model.' },
+  { cat: 'Structural Blocks', name: '{{#escape}}', sig: '{{#escape}}...{{/escape}}',
+    desc: 'Escapes special characters (curly braces, etc.) within the block.' },
+  { cat: 'Structural Blocks', name: '{{#code}}', sig: '{{#code}}...{{/code}}',
+    desc: 'Marks content as code; affects display rendering. Does not execute or parse CBS inside.' },
+  { cat: 'Structural Blocks', name: '{{#func}}', sig: '{{#func name(args)}}body{{/func}}',
+    desc: 'Defines a reusable function. Call later via {{name::arg1::arg2}}.',
+    examples: [{code: '{{#func greet(who)}}Hello, {{getvar::who}}!{{/func}}{{greet::world}}', out: 'Hello, world!'}] },
+
+  // ============ CALC EXPRESSIONS ============
+  { cat: 'Calc Expressions', name: '{{? ...}}', sig: '{{? expression}}',
+    desc: 'Shorthand for arithmetic and comparison expressions using RisuAI\'s RPN calculator. Returns "1"/"0" for booleans, numbers for arithmetic.',
+    examples: [
+      {code: '{{? 2+3*4}}', out: '14'},
+      {code: '{{? (5>3) && (2<4)}}', out: '1'},
+      {code: '{{? {{getvar::hp}}=100}}', out: '1 or 0'}
+    ],
+    operators: [
+      ['+', 'addition'],
+      ['-', 'subtraction (also unary minus)'],
+      ['*', 'multiplication'],
+      ['/', 'division'],
+      ['%', 'modulo'],
+      ['^', 'exponentiation'],
+      ['=', 'equality (single equals!)'],
+      ['==', 'equality (alias for =)'],
+      ['!=', 'inequality'],
+      ['<', 'less than'],
+      ['>', 'greater than'],
+      ['<=', 'less or equal'],
+      ['>=', 'greater or equal'],
+      ['&&', 'logical and'],
+      ['||', 'logical or'],
+      ['!', 'logical not (unary, prefix)']
+    ],
+    note: 'RisuAI uses an RPN calculator, not JavaScript eval. Single = works as equality. Parentheses are supported.' },
+  { cat: 'Calc Expressions', name: '{{calc}}', sig: '{{calc::expression}}',
+    desc: 'Long-form alias for {{? ...}}. Evaluates a math expression.',
+    examples: [{code: '{{calc::10*5+3}}', out: '53'}] },
+
+  // ============ MATH FUNCTIONS ============
+  { cat: 'Math', name: '{{round}}', sig: '{{round::number}}',
+    desc: 'Rounds to nearest integer.',
+    examples: [{code: '{{round::3.7}}', out: '4'}] },
+  { cat: 'Math', name: '{{floor}}', sig: '{{floor::number}}',
+    desc: 'Rounds down to nearest integer.',
+    examples: [{code: '{{floor::3.7}}', out: '3'}] },
+  { cat: 'Math', name: '{{ceil}}', sig: '{{ceil::number}}',
+    desc: 'Rounds up to nearest integer.',
+    examples: [{code: '{{ceil::3.2}}', out: '4'}] },
+  { cat: 'Math', name: '{{abs}}', sig: '{{abs::number}}',
+    desc: 'Absolute value.',
+    examples: [{code: '{{abs::-5}}', out: '5'}] },
+  { cat: 'Math', name: '{{remaind}}', sig: '{{remaind::a::b}}',
+    desc: 'Remainder of a / b (modulo).',
+    examples: [{code: '{{remaind::10::3}}', out: '1'}] },
+  { cat: 'Math', name: '{{pow}}', sig: '{{pow::base::exp}}',
+    desc: 'Power (base^exp).',
+    examples: [{code: '{{pow::2::8}}', out: '256'}] },
+  { cat: 'Math', name: '{{fixnum}}', aliases: ['fixnumber'], sig: '{{fixnum::n::decimals}}',
+    desc: 'Formats a number to fixed decimal places.',
+    examples: [{code: '{{fixnum::3.14159::2}}', out: '3.14'}] },
+  { cat: 'Math', name: '{{min}}', sig: '{{min::a::b::c::...}}',
+    desc: 'Returns the smallest numeric value among arguments.',
+    examples: [{code: '{{min::3::1::4::1::5}}', out: '1'}] },
+  { cat: 'Math', name: '{{max}}', sig: '{{max::a::b::c::...}}',
+    desc: 'Returns the largest numeric value among arguments.',
+    examples: [{code: '{{max::3::1::4::1::5}}', out: '5'}] },
+  { cat: 'Math', name: '{{sum}}', sig: '{{sum::a::b::c::...}}',
+    desc: 'Sum of all numeric arguments.',
+    examples: [{code: '{{sum::1::2::3::4}}', out: '10'}] },
+  { cat: 'Math', name: '{{average}}', sig: '{{average::a::b::c::...}}',
+    desc: 'Arithmetic mean of numeric arguments.',
+    examples: [{code: '{{average::2::4::6}}', out: '4'}] },
+  { cat: 'Math', name: '{{tonumber}}', sig: '{{tonumber::string}}',
+    desc: 'Extracts numeric characters (digits and decimal point) from a string.',
+    examples: [{code: '{{tonumber::price$12.50abc}}', out: '12.50'}] },
+
+  // ============ COMPARISON ============
+  { cat: 'Comparison', name: '{{equal}}', sig: '{{equal::a::b}}',
+    desc: 'Returns "1" if a strictly equals b, "0" otherwise.',
+    examples: [{code: '{{equal::yes::yes}}', out: '1'}],
+    note: 'For numeric or expression-based comparisons, use {{? a=b}} or {{? a==b}}.' },
+  { cat: 'Comparison', name: '{{notequal}}', sig: '{{notequal::a::b}}',
+    desc: 'Returns "1" if a does not equal b, "0" otherwise.' },
+  { cat: 'Comparison', name: '{{greater}}', sig: '{{greater::a::b}}',
+    desc: 'Numeric greater-than. Returns "1" or "0".' },
+  { cat: 'Comparison', name: '{{less}}', sig: '{{less::a::b}}',
+    desc: 'Numeric less-than. Returns "1" or "0".' },
+  { cat: 'Comparison', name: '{{greaterequal}}', aliases: ['greater_equal'], sig: '{{greaterequal::a::b}}',
+    desc: 'Numeric >=. Returns "1" or "0".' },
+  { cat: 'Comparison', name: '{{lessequal}}', aliases: ['less_equal'], sig: '{{lessequal::a::b}}',
+    desc: 'Numeric <=. Returns "1" or "0".' },
+  { cat: 'Comparison', name: '{{startswith}}', sig: '{{startswith::string::prefix}}',
+    desc: 'Returns "1" if string starts with prefix.',
+    examples: [{code: '{{startswith::Hello world::Hello}}', out: '1'}] },
+  { cat: 'Comparison', name: '{{endswith}}', sig: '{{endswith::string::suffix}}',
+    desc: 'Returns "1" if string ends with suffix.' },
+  { cat: 'Comparison', name: '{{contains}}', sig: '{{contains::string::substring}}',
+    desc: 'Returns "1" if string contains substring.' },
+
+  // ============ LOGIC ============
+  { cat: 'Logic', name: '{{and}}', sig: '{{and::a::b}}',
+    desc: 'Logical AND of two truthy values. "1" or "0".' },
+  { cat: 'Logic', name: '{{or}}', sig: '{{or::a::b}}',
+    desc: 'Logical OR.' },
+  { cat: 'Logic', name: '{{not}}', sig: '{{not::a}}',
+    desc: 'Logical NOT.' },
+  { cat: 'Logic', name: '{{all}}', sig: '{{all::a::b::c::...}}',
+    desc: 'Returns "1" if ALL arguments are truthy. Useful for multi-condition #if.',
+    examples: [{code: '{{#if {{all::{{getvar::a}}::{{getvar::b}}::{{getvar::c}}}} }}YES{{/if}}'}] },
+  { cat: 'Logic', name: '{{any}}', sig: '{{any::a::b::c::...}}',
+    desc: 'Returns "1" if ANY argument is truthy.',
+    examples: [{code: '{{any::{{? {{getvar::x}}>=1}}::{{? {{getvar::y}}>=1}}}}'}] },
+
+  // ============ STRING ============
+  { cat: 'String', name: '{{lower}}', aliases: ['lowercase'], sig: '{{lower::string}}',
+    desc: 'Converts to lowercase.',
+    examples: [{code: '{{lower::HELLO}}', out: 'hello'}] },
+  { cat: 'String', name: '{{upper}}', aliases: ['uppercase'], sig: '{{upper::string}}',
+    desc: 'Converts to uppercase.',
+    examples: [{code: '{{upper::hello}}', out: 'HELLO'}] },
+  { cat: 'String', name: '{{capitalize}}', sig: '{{capitalize::string}}',
+    desc: 'Capitalises the first character.',
+    examples: [{code: '{{capitalize::hello}}', out: 'Hello'}] },
+  { cat: 'String', name: '{{reverse}}', sig: '{{reverse::string}}',
+    desc: 'Reverses a string character by character.',
+    examples: [{code: '{{reverse::abc}}', out: 'cba'}] },
+  { cat: 'String', name: '{{trim}}', sig: '{{trim::string}}',
+    desc: 'Removes leading/trailing whitespace.' },
+  { cat: 'String', name: '{{length}}', sig: '{{length::string}}',
+    desc: 'Returns the character length of a string.',
+    examples: [{code: '{{length::hello}}', out: '5'}] },
+  { cat: 'String', name: '{{replace}}', sig: '{{replace::string::find::with}}',
+    desc: 'Replaces all occurrences of "find" with "with".',
+    examples: [{code: '{{replace::hello world::world::there}}', out: 'hello there'}] },
+
+  // ============ ARRAY ============
+  { cat: 'Array', name: '{{makearray}}', aliases: ['array','a'], sig: '{{makearray::a::b::c::...}}',
+    desc: 'Constructs an array from arguments. Returns a serialised array (use other array functions to operate on it).',
+    examples: [{code: '{{makearray::one::two::three}}'}] },
+  { cat: 'Array', name: '{{arrayelement}}', sig: '{{arrayelement::array::index}}',
+    desc: 'Returns the element at the given 0-based index.',
+    examples: [{code: '{{arrayelement::{{makearray::a::b::c}}::1}}', out: 'b'}],
+    note: 'Name has no underscore. {{array_element}} is not recognised.' },
+  { cat: 'Array', name: '{{arraylength}}', sig: '{{arraylength::array}}',
+    desc: 'Returns the length of an array.',
+    examples: [{code: '{{arraylength::{{makearray::a::b::c}}}}', out: '3'}] },
+  { cat: 'Array', name: '{{arraypush}}', sig: '{{arraypush::array::value}}',
+    desc: 'Appends a value to the end of an array, returns the new array.' },
+  { cat: 'Array', name: '{{arraypop}}', sig: '{{arraypop::array}}',
+    desc: 'Removes the last element, returns the new array.' },
+  { cat: 'Array', name: '{{arrayshift}}', sig: '{{arrayshift::array}}',
+    desc: 'Removes the first element, returns the new array.' },
+  { cat: 'Array', name: '{{split}}', sig: '{{split::string::delimiter}}',
+    desc: 'Splits a string into an array on the delimiter.',
+    examples: [{code: '{{split::a,b,c::,}}'}] },
+  { cat: 'Array', name: '{{join}}', sig: '{{join::array::separator}}',
+    desc: 'Joins array elements into a single string with the separator.',
+    examples: [{code: '{{join::{{makearray::a::b::c}}::, }}', out: 'a, b, c'}] },
+  { cat: 'Array', name: '{{spread}}', sig: '{{spread::array::separator}}',
+    desc: 'Spreads array values as a string. Default separator is ", ".' },
+  { cat: 'Array', name: '{{filter}}', sig: '{{filter::array::type}}',
+    desc: 'Filters array: "nonempty" removes empty values, "unique" removes duplicates, "all" applies both.',
+    examples: [{code: '{{filter::{{makearray::a::::b::a}}::all}}', out: 'array of [a, b]'}] },
+  { cat: 'Array', name: '{{range}}', sig: '{{range::start::end::step}}',
+    desc: 'Generates a numeric range as an array. Step defaults to 1.',
+    examples: [{code: '{{range::1::5::1}}', out: '[1, 2, 3, 4, 5]'}] },
+
+  // ============ DICTIONARY ============
+  { cat: 'Dictionary', name: '{{makedict}}', aliases: ['dict','d','object','o','makeobject'], sig: '{{makedict::key1=value1::key2=value2}}',
+    desc: 'Constructs a dictionary/object from key=value pairs.',
+    examples: [{code: '{{makedict::name=Alice::age=30}}'}] },
+  { cat: 'Dictionary', name: '{{dictelement}}', aliases: ['objectelement'], sig: '{{dictelement::dict::key}}',
+    desc: 'Looks up a value by key.',
+    examples: [{code: '{{dictelement::{{makedict::a=1::b=2}}::a}}', out: '1'}] },
+
+  // ============ RANDOM ============
+  { cat: 'Random', name: '{{random}}', sig: '{{random::a::b::c::...}} or {{random}}',
+    desc: 'Picks a random argument. With no arguments, returns a random number between 0 and 1.',
+    examples: [{code: '{{random::red::green::blue}}'}] },
+  { cat: 'Random', name: '{{pick}}', sig: '{{pick::a::b::c::...}}',
+    desc: 'Picks a random argument. Equivalent to {{random}} with arguments.' },
+  { cat: 'Random', name: '{{randint}}', sig: '{{randint::min::max}}',
+    desc: 'Random integer between min and max (inclusive).',
+    examples: [{code: '{{randint::1::6}}'}] },
+  { cat: 'Random', name: '{{dice}}', sig: '{{dice::sides}}',
+    desc: 'Rolls an N-sided die. Returns 1 to N.',
+    examples: [{code: '{{dice::20}}', out: 'random 1 to 20'}] },
+
+  // ============ TIME ============
+  { cat: 'Time', name: '{{time}}', sig: '{{time}}',
+    desc: 'Local time as a string.' },
+  { cat: 'Time', name: '{{isotime}}', sig: '{{isotime}}',
+    desc: 'Current time in ISO 8601 format.' },
+  { cat: 'Time', name: '{{isodate}}', sig: '{{isodate}}',
+    desc: 'Current date in YYYY-MM-DD format.' },
+  { cat: 'Time', name: '{{unixtime}}', sig: '{{unixtime}}',
+    desc: 'Unix timestamp in seconds.' },
+
+  // ============ ESCAPE ============
+  { cat: 'Escape', name: '{{bo}}', aliases: ['ddecbo'], sig: '{{bo}}',
+    desc: 'Outputs literal "{{". Use to display CBS syntax in output.',
+    examples: [{code: '{{bo}}getvar::x{{bc}}', out: '{{getvar::x}}'}] },
+  { cat: 'Escape', name: '{{bc}}', aliases: ['ddecbc'], sig: '{{bc}}',
+    desc: 'Outputs literal "}}".' },
+  { cat: 'Escape', name: '{{decbo}}', aliases: ['displayescapedcurlybracketopen'], sig: '{{decbo}}',
+    desc: 'Outputs a single literal "{".' },
+  { cat: 'Escape', name: '{{decbc}}', aliases: ['displayescapedcurlybracketclose'], sig: '{{decbc}}',
+    desc: 'Outputs a single literal "}".' },
+  { cat: 'Escape', name: '{{debo}}', aliases: ['displayescapedbracketopen'], sig: '{{debo}}',
+    desc: 'Outputs literal "(".' },
+  { cat: 'Escape', name: '{{debc}}', aliases: ['displayescapedbracketclose'], sig: '{{debc}}',
+    desc: 'Outputs literal ")".' },
+  { cat: 'Escape', name: '{{deabo}}', aliases: ['displayescapedanglebracketopen'], sig: '{{deabo}}',
+    desc: 'Outputs literal "<".' },
+  { cat: 'Escape', name: '{{deabc}}', aliases: ['displayescapedanglebracketclose'], sig: '{{deabc}}',
+    desc: 'Outputs literal ">".' },
+  { cat: 'Escape', name: '{{dec}}', aliases: ['displayescapedcolon'], sig: '{{dec}}',
+    desc: 'Outputs literal ":". Useful inside argument lists where :: would split.' },
+  { cat: 'Escape', name: '{{displayescapedsemicolon}}', sig: '{{displayescapedsemicolon}}',
+    desc: 'Outputs literal ";".' },
+  { cat: 'Escape', name: '{{br}}', aliases: ['newline'], sig: '{{br::n}}',
+    desc: 'Inserts n newlines (default 1).',
+    examples: [{code: 'Line 1{{br}}Line 2', out: 'Line 1\\nLine 2'}] },
+  { cat: 'Escape', name: '{{cbr}}', aliases: ['cnl','cnewline'], sig: '{{cbr::n}}',
+    desc: 'Inserts n newlines, but in a context that survives certain CSS/rendering whitespace collapsing.' },
+  { cat: 'Escape', name: '{{blank}}', sig: '{{blank}}',
+    desc: 'Returns an empty string. Useful as a no-op or placeholder.' },
+
+  // ============ COMMENTS ============
+  { cat: 'Comments', name: '{{//}}', sig: '{{//::your comment}}',
+    desc: 'Inline comment. Stripped from output. Use for notes inside the template.',
+    examples: [{code: '{{//::TODO: refine wording later}}'}] },
+  { cat: 'Comments', name: '{{comment}}', sig: '{{comment::your comment}}',
+    desc: 'Long-form alias for {{//}}.' },
+
+  // ============ MISC ============
+  { cat: 'Miscellaneous', name: '{{button}}', sig: '{{button::label::action}}',
+    desc: 'Renders an interactive button in display (RisuAI UI feature).' },
+  { cat: 'Miscellaneous', name: '{{asset}}', sig: '{{asset::name}}',
+    desc: 'Embeds a character asset (image, file).' },
+  { cat: 'Miscellaneous', name: '{{emotion}}', sig: '{{emotion::name}}',
+    desc: 'Displays a character emotion sprite by name.' },
+];
+
+const REF_TOGGLES_INTRO = `Custom Toggles let preset authors define UI controls (checkboxes, dropdowns, text fields, groups) that surface in the user's chat sidebar. Toggle values are stored in global chat variables with a "toggle_" prefix.
+
+Each line follows: key=label=type=options
+Empty lines are ignored. The type field determines what kind of control is created.
+
+Most toggles store their value in toggle_<key>. Reference them in prompts via {{getglobalvar::toggle_<key>}}, or via #when operators (toggle, tis, tisnot) which add the prefix automatically.`;
+
+const REF_STATE = { active: null, query: '', activeIdx: 0 };
+
+function refMatch(entry, q) {
+  if (!q) return true;
+  const ql = q.toLowerCase();
+  if (entry.name.toLowerCase().includes(ql)) return true;
+  if (entry.sig && entry.sig.toLowerCase().includes(ql)) return true;
+  if (entry.desc && entry.desc.toLowerCase().includes(ql)) return true;
+  if (entry.aliases && entry.aliases.some(a => a.toLowerCase().includes(ql))) return true;
+  if (entry.cat.toLowerCase().includes(ql)) return true;
+  return false;
+}
+
+function refHighlight(text, q) {
+  if (!q) return escH(text);
+  const idx = text.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return escH(text);
+  return escH(text.substring(0, idx)) + '<span class="hit">' + escH(text.substring(idx, idx + q.length)) + '</span>' + escH(text.substring(idx + q.length));
+}
+
+function renderRefNav() {
+  const nav = _('refNav');
+  const q = REF_STATE.query;
+  const filtered = REF_DATA.filter(e => refMatch(e, q));
+  if (!filtered.length) {
+    nav.innerHTML = '<div class="ref-empty">No matches.</div>';
+    return;
+  }
+  // Auto-select first match if current selection isn't in filtered results
+  if (!REF_STATE.active || !filtered.includes(REF_STATE.active)) {
+    REF_STATE.active = filtered[0];
+  }
+  let h = '';
+  let lastCat = '';
+  filtered.forEach((e, i) => {
+    if (e.cat !== lastCat) {
+      h += '<div class="ref-cat">' + escH(e.cat) + '</div>';
+      lastCat = e.cat;
+    }
+    const cls = e === REF_STATE.active ? 'ref-item active' : 'ref-item';
+    h += '<div class="' + cls + '" data-rn="' + i + '">' + refHighlight(e.name, q) + '</div>';
+  });
+  nav.innerHTML = h;
+  nav.querySelectorAll('.ref-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.rn);
+      REF_STATE.active = filtered[idx];
+      renderRefNav();
+      renderRefContent();
+    });
+  });
+}
+
+function renderRefContent() {
+  const c = _('refContent');
+  const e = REF_STATE.active;
+  if (!e) {
+    c.innerHTML = '<div class="ref-empty">Select an entry from the left, or start typing in the search box.</div>';
+    return;
+  }
+  let h = '<h2>' + escH(e.name) + '</h2>';
+  h += '<div class="sig"><code class="inline">' + escH(e.sig || e.name) + '</code></div>';
+  if (e.aliases && e.aliases.length) {
+    h += '<div class="aliases">Aliases: ' + e.aliases.map(a => '<code>{{' + escH(a) + '}}</code>').join(', ') + '</div>';
+  }
+  if (e.desc) h += '<p>' + escH(e.desc) + '</p>';
+  if (e.operators && e.operators.length) {
+    h += '<div class="ex-label">Operators</div>';
+    h += '<table style="border-collapse:collapse;margin:6px 0;font-size:calc(var(--pfs) - 1px)">';
+    e.operators.forEach(([op, expl]) => {
+      h += '<tr><td style="padding:2px 12px 2px 0;font-family:monospace;color:var(--purple);vertical-align:top"><code class="inline">' + escH(op) + '</code></td><td style="padding:2px 0;color:var(--fg)">' + escH(expl) + '</td></tr>';
+    });
+    h += '</table>';
+  }
+  if (e.examples && e.examples.length) {
+    e.examples.forEach((ex, i) => {
+      h += '<div class="ex-block">';
+      h += '<div class="ex-label">Example' + (e.examples.length > 1 ? ' ' + (i + 1) : '') + '</div>';
+      h += '<div class="ex-code">' + escH(ex.code) + '</div>';
+      if (ex.out) h += '<div class="ex-out">' + escH(ex.out) + '</div>';
+      h += '</div>';
+    });
+  }
+  if (e.note) h += '<div class="note-box">' + escH(e.note) + '</div>';
+  // Related (other entries in same category)
+  const related = REF_DATA.filter(x => x.cat === e.cat && x !== e);
+  if (related.length) {
+    h += '<div class="related"><span style="margin-right:6px">See also:</span>';
+    related.slice(0, 8).forEach(r => {
+      h += '<a data-rrel="' + escH(r.name) + '">' + escH(r.name) + '</a>';
+    });
+    h += '</div>';
+  }
+  c.innerHTML = h;
+  c.querySelectorAll('[data-rrel]').forEach(a => {
+    a.addEventListener('click', () => {
+      const target = REF_DATA.find(x => x.name === a.dataset.rrel);
+      if (target) {
+        REF_STATE.active = target;
+        REF_STATE.query = '';
+        _('refSearch').value = '';
+        renderRefNav();
+        renderRefContent();
+        const activeEl = _('refNav').querySelector('.ref-item.active');
+        if (activeEl) activeEl.scrollIntoView({block: 'nearest'});
+      }
+    });
+  });
+}
+
+function toggleRefDrawer() {
+  const open = _('drawer').style.display !== 'none';
+  if (open) {
+    _('drawer').style.display = 'none';
+    _('drawerHD').style.display = 'none';
+  } else {
+    _('drawer').style.display = '';
+    _('drawerHD').style.display = '';
+    if (!REF_STATE.active) REF_STATE.active = REF_DATA[0];
+    renderRefNav();
+    renderRefContent();
+    setTimeout(() => _('refSearch').focus(), 50);
+  }
+}
+
+_('bRef').addEventListener('click', toggleRefDrawer);
+_('bRefClose').addEventListener('click', toggleRefDrawer);
+_('refSearch').addEventListener('input', e => {
+  REF_STATE.query = e.target.value.trim();
+  renderRefNav();
+  renderRefContent();
+});
+
+// Drawer height drag
+(function(){
+  const hd = _('drawerHD'), dr = _('drawer');
+  let g = false, sy, sh;
+  hd.addEventListener('mousedown', e => {
+    g = true; sy = e.clientY; sh = dr.offsetHeight;
+    document.body.style.cursor = 'row-resize'; e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!g) return;
+    dr.style.height = Math.max(140, Math.min(700, sh - (e.clientY - sy))) + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (g) { g = false; document.body.style.cursor = ''; }
+  });
+})();
+
+
 function rPI(items){
   let h='';
   for(const it of items){
     if(it.type==='group'){h+='<div class="cpg"><div class="cpgt">'+escH(it.label)+'</div><div class="cpgb">'+rPI(it.items)+'</div></div>';}
     else if(it.type==='divider'){h+='<div class="cpd">'+escH(it.label)+'</div>';}
+    else if(it.type==='caption'){h+='<div class="cpd" style="font-style:italic;opacity:.7">'+escH(it.label)+'</div>';}
     else if(it.type==='select'){
       h+='<div class="cpi"><span class="cpl">'+escH(it.label)+'</span><select class="cps" data-cs="'+escH(it.varname)+'">';
       it.options.forEach((o,i)=>{h+='<option value="'+i+'"'+(S.panelValues[it.varname]===String(i)?' selected':'')+'>'+escH(o)+'</option>';});
@@ -1203,13 +1884,13 @@ tc.vars.addEventListener('input',e=>{
 function renderState(){
   let h='<div class="sec"><div class="st">Variables (Post-Parse)</div><div class="ib">';
   const en=Object.entries(S.lastVars);
-  if(!en.length)h+='<div style="color:var(--fg3);font-size:10px">None</div>';
+  if(!en.length)h+='<div style="color:var(--fg3);font-size:var(--us10)">None</div>';
   else en.forEach(([k,v])=>{h+='<div class="ir"><span class="ik">'+escH(k)+'</span><span class="iv">'+escH(String(v))+'</span></div>';});
   h+='</div></div>';
 
   h+='<div class="sec"><div class="st">Panel Values</div><div class="ib">';
   const pv=Object.entries(S.panelValues);
-  if(!pv.length)h+='<div style="color:var(--fg3);font-size:10px">No panel</div>';
+  if(!pv.length)h+='<div style="color:var(--fg3);font-size:var(--us10)">No panel</div>';
   else{const fl=flattenPanelItems(S.panelParsed);pv.forEach(([k,v])=>{
     const it=fl.find(f=>f.varname===k);let d=v;
     if(it?.type==='select'&&it.options[parseInt(v)])d=v+' ('+it.options[parseInt(v)]+')';
