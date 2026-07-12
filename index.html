@@ -28,7 +28,7 @@
   --badge-desc-bg:#2a3a3a;--badge-lore-bg:#3a2a3a;--badge-other-bg:#2a2d3a;--badge-an-bg:#3a3a2a;
   --toggle-bg:#2a2d3a;--toggle-on:#61afef;--toggle-dot:#c8ccd4;
   --input-bg:#0e0f14;--input-border:#2a2d3a;
-  --warn-syntax-bg:rgba(209,154,102,0.1)
+  --warn-syntax-bg:rgba(209,154,102,0.1);--active-bg:rgba(97,175,239,0.16)
 }
 .light{
   --bg0:#ffffff;--bg1:#f5f6f8;--bg2:#ebedf0;--border:#d0d3da;--border2:#b8bcc5;
@@ -40,7 +40,7 @@
   --badge-desc-bg:#ccfbf1;--badge-lore-bg:#f3e8ff;--badge-other-bg:#f3f4f6;--badge-an-bg:#fef9c3;
   --toggle-bg:#d0d3da;--toggle-on:#2563eb;--toggle-dot:#ffffff;
   --input-bg:#ffffff;--input-border:#d0d3da;
-  --warn-syntax-bg:rgba(217,119,6,0.1)
+  --warn-syntax-bg:rgba(217,119,6,0.1);--active-bg:rgba(37,99,235,0.13)
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font-family:'JetBrains Mono','Fira Code',Consolas,monospace}
@@ -227,6 +227,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .cb5{color:var(--err);font-weight:600}.cb5a{color:var(--cb5a);font-weight:600}
 .cb-err{color:var(--err);font-weight:700;text-decoration:wavy underline var(--err);text-underline-offset:3px}
 .cbs-warn{color:var(--orange);background:var(--warn-syntax-bg);border-radius:2px}
+.ehigh .ca{background:var(--active-bg);border-radius:2px}
 /* Diagnostics bar */
 .diag{padding:3px 10px;background:var(--diag-bg);border-bottom:1px solid var(--diag-border);font-size:var(--us10);color:var(--err);flex-shrink:0;display:none;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;line-height:1.5;max-height:60px;overflow-y:auto}
 .diag.show{display:block}
@@ -247,7 +248,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 <div class="app">
   <div class="hdr nosel">
     <button class="hb p" id="bSide" title="Toggle sidebar">&#9776;</button>
-    <div class="htitle">CBS Editor <span>v6.1</span></div>
+    <div class="htitle">CBS Editor <span>v6.2</span></div>
     <div class="hsep"></div>
     <button class="hb" id="bImp">Import</button>
     <button class="hb g" id="bExp">Export</button>
@@ -267,6 +268,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
       </div>
     </div>
     <div class="hsep"></div>
+    <button class="hb" id="bRoll" title="Re-roll randomness (simulates a new request)">&#127922;</button>
     <button class="hb" id="bRef" title="Toggle CBS reference">&#x1F4D6;</button>
     <button class="hb" id="bTheme" title="Toggle light/dark mode">&#9788;</button>
   </div>
@@ -295,7 +297,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
     <div class="work-area" id="workArea">
       <div class="work-top" id="workTop">
         <div class="center" id="ctr">
-          <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span><span style="flex:1"></span><span id="fieldSw" style="display:none"></span></div>
+          <div class="ebar"><div class="dot" id="sDot"></div><span>Editor</span><span class="crumb" id="eCrumb"></span><span style="flex:1"></span><span id="fieldSw" style="display:none"></span><button class="hb" id="bActive" style="margin-left:6px;font-size:var(--us9);padding:2px 6px" title="Highlight text that is live given current toggles/variables">Live</button></div>
           <div class="diag" id="diag"></div>
           <div class="econtainer">
             <div class="ehigh" id="hl"></div>
@@ -424,8 +426,18 @@ function makeArray(arr) {
 function isTruthy(s) { return s === "true" || s === "1"; }
 
 function createCBSParser(config) {
-  const { charName="Character", userName="User", variables={}, toggles={}, persona="" } = config;
+  const { charName="Character", userName="User", variables={}, toggles={}, persona="", rngSeed=null } = config;
   const vars = { ...variables };
+  // Seeded PRNG (mulberry32). When rngSeed is provided, randomness is deterministic
+  // for a given seed, so re-parsing the same text does not re-roll. A fresh seed
+  // (via the re-roll button) simulates a new request being sent.
+  let _rngState = (rngSeed==null ? (Math.random()*4294967296)>>>0 : (rngSeed>>>0));
+  const rng = () => {
+    _rngState |= 0; _rngState = (_rngState + 0x6D2B79F5) | 0;
+    let t = Math.imul(_rngState ^ (_rngState >>> 15), 1 | _rngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
   const M = new Map();
   const reg = (name, cb, al=[]) => { M.set(name.toLowerCase().replace(/[\s_-]/g,""), cb); al.forEach(a => M.set(a.toLowerCase().replace(/[\s_-]/g,""), cb)); };
   const gv = k => vars[k] ?? "";
@@ -515,10 +527,10 @@ function createCBSParser(config) {
   reg("arrayshift", (s,m,a) => { const arr=parseArray(a[0]??"[]"); arr.shift(); return makeArray(arr); });
   reg("makedict", (s,m,a) => { const o={}; a.forEach(x=>{const i=x.indexOf("=");if(i!==-1)o[x.substring(0,i)]=x.substring(i+1);}); return JSON.stringify(o); }, ["dict","d","object","o","makeobject"]);
   reg("dictelement", (s,m,a) => { try{return String(JSON.parse(a[0]??"{}")[a[1]]??"");}catch{return "";} }, ["objectelement"]);
-  reg("random", (s,m,a) => a.length>0?a[Math.floor(Math.random()*a.length)]:String(Math.random()));
-  reg("pick", (s,m,a) => a.length>0?a[Math.floor(Math.random()*a.length)]:"");
-  reg("randint", (s,m,a) => { const mn=parseInt(a[0])||0,mx=parseInt(a[1])||100; return String(Math.floor(Math.random()*(mx-mn+1))+mn); });
-  reg("dice", (s,m,a) => String(Math.floor(Math.random()*(parseInt(a[0])||6))+1));
+  reg("random", (s,m,a) => a.length>0?a[Math.floor(rng()*a.length)]:String(rng()));
+  reg("pick", (s,m,a) => a.length>0?a[Math.floor(rng()*a.length)]:"");
+  reg("randint", (s,m,a) => { const mn=parseInt(a[0])||0,mx=parseInt(a[1])||100; return String(Math.floor(rng()*(mx-mn+1))+mn); });
+  reg("dice", (s,m,a) => String(Math.floor(rng()*(parseInt(a[0])||6))+1));
   reg("range", (s,m,a) => { const st=parseInt(a[0])||0,en=parseInt(a[1])||0,sp=parseInt(a[2])||1,r=[]; for(let i=st;sp>0?i<=en:i>=en;i+=sp)r.push(String(i)); return makeArray(r); });
   reg("model", () => "gemini-3-pro-preview");
   reg("axmodel", () => "gemini-3-pro-preview");
@@ -690,7 +702,50 @@ const DEPTH_COLORS = ['cb0','cb1','cb2','cb3','cb4','cb5'];
 // CBS-like keywords that suggest a single { was meant to be {{
 const CBS_KEYWORDS = /^(#if|#when|#each|#pure|#func|#escape|#code|\/if|\/when|\/each|\/pure|\/func|\/escape|\/code|:else|char|bot|user|persona|getvar|setvar|getglobalvar|addvar|calc|random|print|slot|comment|\/\/)/;
 
-function highlightCBS(text) {
+// Determine which plain-text runs in the template are "active" (survive parsing)
+// given the current variables/toggles/seed. Uses unique sentinels around each plain
+// run and a single real parse, so side effects (setvar/settempvar) and randomness
+// are handled exactly as the preview would, with rolls fixed to the current seed.
+function analyzeActiveRuns(template, cfg){
+  const OPEN='\u0001', CLOSE='\u0002', SEP='\u0003';
+  const runs=[];
+  let injected='', i=0;
+  while(i<template.length){
+    if(template[i]==='{'&&template[i+1]==='{'){
+      let j=i+2, depth=1;
+      while(j<template.length-1&&depth>0){
+        if(template[j]==='{'&&template[j+1]==='{'){depth++;j+=2;}
+        else if(template[j]==='}'&&template[j+1]==='}'){depth--;j+=2;}
+        else j++;
+      }
+      if(depth>0)j=template.length;
+      injected+=template.substring(i,j);
+      i=j;
+    }else{
+      let e=i;
+      while(e<template.length&&!(template[e]==='{'&&template[e+1]==='{'))e++;
+      if(e>i){
+        const id=runs.length;
+        runs.push({start:i,end:e});
+        injected+=OPEN+id+SEP+template.substring(i,e)+CLOSE;
+      }
+      i=e;
+    }
+  }
+  let out;
+  try{ out=createCBSParser(cfg).parse(injected); }
+  catch(err){ return null; }
+  const active=new Set();
+  // eslint-disable-next-line no-control-regex
+  const re=new RegExp(OPEN+'(\\d+)'+SEP,'g');
+  let m; while((m=re.exec(out))!==null) active.add(parseInt(m[1]));
+  // Build a per-character active flag over the source
+  const flags=new Uint8Array(template.length);
+  runs.forEach((r,id)=>{ if(active.has(id)) for(let k=r.start;k<r.end;k++) flags[k]=1; });
+  return flags;
+}
+
+function highlightCBS(text, activeFlags) {
   const parts = []; let i = 0;
   let blockDepth = 0;
   const openStack = [];
@@ -748,15 +803,29 @@ function highlightCBS(text) {
     } else if (text[i] === '\n') {
       parts.push('\n'); lineNum++; i++;
     } else {
-      // Plain text scan - also detect typos
+      // Plain text scan - also detect typos, and wrap "active" runs when activeFlags present.
       let e = i;
-      let segment = '';
+      // Emit a plain substring [from,to), splitting into active/inactive spans.
+      const emitPlain = (from, to) => {
+        if (to <= from) return;
+        if (!activeFlags) { parts.push(escH(text.substring(from, to))); return; }
+        let segStart = from, cur = activeFlags[from] === 1;
+        for (let p = from + 1; p <= to; p++) {
+          const act = p < to ? (activeFlags[p] === 1) : !cur;
+          if (p === to || act !== cur) {
+            const chunk = escH(text.substring(segStart, p));
+            parts.push(cur ? '<span class="ca">' + chunk + '</span>' : chunk);
+            segStart = p; cur = act;
+          }
+        }
+      };
+      let runStart = i;
       while (e < text.length && text[e] !== '\n') {
         if (text[e] === '{' && text[e+1] === '{') break;
 
         // Check for lone }} (missing opening {{)
         if (text[e] === '}' && text[e+1] === '}') {
-          if (segment) { parts.push(escH(segment)); segment = ''; }
+          emitPlain(runStart, e); runStart = e + 2;
           parts.push('<span class="cb-err" title="Stray }} without matching {{">' + escH('}}') + '</span>');
           e += 2;
           continue;
@@ -764,29 +833,21 @@ function highlightCBS(text) {
 
         // Check for single { that looks like a CBS typo
         if (text[e] === '{' && text[e+1] !== '{') {
-          // Look ahead to see if content after { looks like CBS
           const ahead = text.substring(e + 1, Math.min(e + 20, text.length));
           if (CBS_KEYWORDS.test(ahead)) {
-            if (segment) { parts.push(escH(segment)); segment = ''; }
-            // Find the extent of this suspected typo (until } or newline)
+            emitPlain(runStart, e);
             let te = e + 1;
             while (te < text.length && text[te] !== '}' && text[te] !== '\n') te++;
             if (te < text.length && text[te] === '}') te++;
             parts.push('<span class="cbs-warn" title="Single { detected. Did you mean {{?">' + escH(text.substring(e, te)) + '</span>');
-            e = te;
+            e = te; runStart = te;
             continue;
           }
         }
 
-        // Check for single } after what looked like CBS content
-        if (text[e] === '}' && text[e+1] !== '}' && e > 0 && text[e-1] !== '}') {
-          // Less common case, just pass through
-        }
-
-        segment += text[e];
         e++;
       }
-      if (segment) parts.push(escH(segment));
+      emitPlain(runStart, e);
       if (e === i) { parts.push(escH(text[i])); i++; }
       else i = e;
     }
@@ -978,7 +1039,7 @@ const S = {
   preset:null, presetName:'', promptTemplate:[], activeIdx:-1,
   manualVars:[], persona:'', bTab:'panel',
   lastVars:{}, parseErr:null,
-  panelText:'', panelParsed:[], panelValues:{}, panelHeight:null, panelRefOpen:false, activeField:null, showShadow:false,
+  panelText:'', panelParsed:[], panelValues:{}, panelHeight:null, panelRefOpen:false, activeField:null, showShadow:false, rngSeed:12345, showActive:false,
   mode:'free', fs:13, pfs:13, us:100, sideOpen:true
 };
 
@@ -987,7 +1048,7 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{//::CBS Editor v6.1}}';
+ed.value='{{//::CBS Editor v6.2}}';
 
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');setTimeout(()=>toastEl.className='toast',2500);}
 function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;}
@@ -1003,7 +1064,7 @@ function togVars(){
 
 function parse(){
   try{
-    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{}});
+    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed});
     const r=p.parse(ed.value);S.lastVars=p.vars;S.parseErr=null;sDot.classList.remove('err');return r;
   }catch(e){S.parseErr=e.message;S.lastVars={};sDot.classList.add('err');return'Parse error: '+e.message;}
 }
@@ -1011,7 +1072,7 @@ function parse(){
 // Parse an arbitrary item's text safely (used for shadow context neighbors)
 function parseItemText(t){
   try{
-    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{}});
+    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed});
     return p.parse(t||'');
   }catch(e){return '';}
 }
@@ -1056,7 +1117,12 @@ function renderPreviewContext(){
 function syncScroll(){ hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; }
 
 function renderHighlight(){
-  hl.innerHTML=highlightCBS(ed.value)+'\n';
+  let flags=null;
+  if(S.showActive){
+    try{ flags=analyzeActiveRuns(ed.value,{charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed}); }
+    catch(e){ flags=null; }
+  }
+  hl.innerHTML=highlightCBS(ed.value,flags)+'\n';
   syncScroll();
   // Diagnostics depend on highlight pass, update them here
   const diag = highlightCBS._diag || [];
@@ -1282,6 +1348,11 @@ _('bShadow').addEventListener('click',()=>{
   S.showShadow=!S.showShadow;
   _('bShadow').classList.toggle('on-toggle',S.showShadow);
   renderPreviewContext();
+});
+_('bActive').addEventListener('click',()=>{
+  S.showActive=!S.showActive;
+  _('bActive').classList.toggle('on-toggle',S.showActive);
+  renderHighlight();
 });
 _('bFull').addEventListener('click',openFullModal);
 _('bFullClose').addEventListener('click',closeFullModal);
@@ -1990,6 +2061,12 @@ function toggleRefDrawer() {
   }
 }
 
+_('bRoll').addEventListener('click',()=>{
+  S.rngSeed=(Math.random()*4294967296)>>>0;
+  update();
+  renderHighlight();
+  toast('Re-rolled randomness');
+});
 _('bRef').addEventListener('click', toggleRefDrawer);
 _('bRefClose').addEventListener('click', toggleRefDrawer);
 _('refSearch').addEventListener('input', e => {
