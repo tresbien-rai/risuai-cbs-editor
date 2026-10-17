@@ -3,8 +3,9 @@
   CBS Editor - a browser-based editor for RisuAI Curly Braces Syntax (CBS)
   Copyright (C) 2026 tresbien-rai
 
-  Portions (the CBS parser, RPN calculator and preset encoding) are derived from
-  RisuAI by Kwaroran, https://github.com/kwaroran/RisuAI, licensed GPL-3.0.
+  The CBS engine (parser, function registry, calculator) is generated from, and the
+  preset encoding derived from, RisuAI by Kwaroran, https://github.com/kwaroran/RisuAI,
+  licensed GPL-3.0.
 
   This program is free software: you can redistribute it and/or modify it under
   the terms of the GNU General Public License version 3 as published by the Free
@@ -292,7 +293,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 <div class="app">
   <div class="hdr nosel">
     <button class="hb p" id="bSide" title="Toggle sidebar">&#9776;</button>
-    <div class="htitle">CBS Editor <span>v6.5</span></div>
+    <div class="htitle">CBS Editor <span>v7.0</span></div>
     <div class="hsep"></div>
     <button class="hb" id="bImp">Import</button>
     <button class="hb g" id="bExp">Export</button>
@@ -389,13 +390,14 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
   </div>
 </div>
 <script>
+// ==== CBS-CORE BEGIN (host + engine + adapter; tools/check.mjs runs this region in Node) ====
 // ============================================================
 // CBS engine host
 // ============================================================
 // The CBS engine below is RisuAI's own parser and function registry, generated from
 // RisuAI's source by tools/sync-risu.mjs. RisuHost stands in for the parts of RisuAI it
 // reaches into (database, current character/chat, chat variables), simulating one
-// character with an empty chat, so the preview behaves as RisuAI does for a prompt item.
+// character and chat, so the preview behaves as RisuAI does for a prompt item.
 const RisuHost = (function(){
   let ctx = null;  // {db, char, chat}; set for the duration of one parse
   const store = v => ({ v });
@@ -3664,7 +3666,10 @@ function createCBSParser(config){
   for (const [k, v] of Object.entries(variables)) {
     if (k.startsWith('toggle_')) globals[k] = v; else defaults.push(k + '=' + v);
   }
-  const chat = { id: 'editor-' + (rngSeed ?? 0), message: [], note: '', localLore: [], fmIndex: -1, scriptstate: {} };
+  // A chat mid-conversation (prompts are built after at least one exchange), with placeholders
+  const now = Date.now();
+  const message = [{ role: 'char', data: '[Previous char message]', time: now - 60000 }, { role: 'user', data: '[Last user message]', time: now }];
+  const chat = { id: 'editor-' + (rngSeed ?? 0), message, note: '', localLore: [], fmIndex: -1, scriptstate: {} };
   const char = { type: 'character', name: charName, nickname: '', chaId: 'cbs-editor', personality: '[Personality]',
     desc: '[Description]', scenario: '[Scenario]', exampleMessage: '[Example Dialogue]', firstMessage: '',
     alternateGreetings: [], chats: [chat], chatPage: 0, emotionImages: [], additionalAssets: [], defaultVariables: '' };
@@ -3695,6 +3700,7 @@ function createCBSParser(config){
     },
   };
 }
+// ==== CBS-CORE END ====
 
 
 // Block tags that open a new depth level
@@ -3767,6 +3773,7 @@ function highlightCBS(text, activeFlags, caret) {
   const openStack = [];
   // Closed blocks with source ranges and the parts[] index of each tag (for caret emphasis)
   const blocks = [];
+  const slashLines = [];
   // Track alternating index per depth level
   const depthCounter = {};
   let lineNum = 1;
@@ -3784,7 +3791,7 @@ function highlightCBS(text, activeFlags, caret) {
       const expr = text.substring(i, j);
       const inner = expr.length >= 4 ? expr.substring(2, expr.length - 2) : '';
 
-      let cls = 'ce';
+      let cls = 'ce', title = '';
       if (BLOCK_OPEN.test(inner)) {
         // Get alternating shade for this depth
         if (!depthCounter[blockDepth]) depthCounter[blockDepth] = 0;
@@ -3812,11 +3819,16 @@ function highlightCBS(text, activeFlags, caret) {
         cls = 'cm';
       } else if (inner === 'char' || inner === 'bot' || inner === 'user' || inner === 'persona') {
         cls = 'cn';
-      } else if (inner.startsWith('//') || inner.startsWith('comment')) {
+      } else if (inner.startsWith('//')) {
+        // RisuAI's parser leaves {{//...}} in prompts, so flag it rather than styling it as a comment
+        cls = 'cbs-warn';
+        title = 'RisuAI does not remove {{//}} from prompts; it is sent to the model. Use {{comment::...}} instead.';
+        slashLines.push(lineNum);
+      } else if (inner.startsWith('comment')) {
         cls = 'cc';
       }
 
-      parts.push('<span class="' + cls + '">' + escH(expr) + '</span>');
+      parts.push('<span class="' + cls + '"' + (title ? ' title="' + escH(title) + '"' : '') + '>' + escH(expr) + '</span>');
       for (let k = i; k < j; k++) if (text[k] === '\n') lineNum++;
       i = j;
     } else if (text[i] === '\n') {
@@ -3873,6 +3885,7 @@ function highlightCBS(text, activeFlags, caret) {
   }
 
   highlightCBS._diag = openStack.map(b => ({ tag: b.tag, line: b.line }));
+  highlightCBS._slash = slashLines;
   // Unclosed blocks run to the end of the text
   openStack.forEach(b => blocks.push(Object.assign(b, { cStart: -1, cEnd: text.length + 1, cPart: -1 })));
   highlightCBS._blocks = blocks;
@@ -3889,7 +3902,7 @@ function highlightCBS(text, activeFlags, caret) {
   }
   return parts.join('');
 }
-highlightCBS._diag = []; highlightCBS._blocks = []; highlightCBS._active = null;
+highlightCBS._diag = []; highlightCBS._slash = []; highlightCBS._blocks = []; highlightCBS._active = null;
 function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
 
 // RPack: Simple byte substitution (from RisuAI source)
@@ -4077,7 +4090,7 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{comment::CBS Editor v6.5}}';
+ed.value='{{comment::CBS Editor v7.0}}';
 
 let toastT;
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.className='toast',2500);}
@@ -4223,11 +4236,16 @@ function renderHighlight(){
   sDot.classList.toggle('err',!!S.parseErr||highlightCBS._diag.length>0);
 }
 
-// Unclosed-block diagnostics come from the highlight pass
+// Diagnostics come from the highlight pass: unclosed blocks, and {{//}} comments that
+// RisuAI would send to the model
 function renderDiag(){
-  const diag=highlightCBS._diag,diagEl=_('diag');
-  diagEl.innerHTML=diag.length?'\u26A0 Unclosed: '+diag.map(d=>'<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>').join(', '):'';
-  diagEl.classList.toggle('show',diag.length>0);
+  const diag=highlightCBS._diag,sl=highlightCBS._slash,diagEl=_('diag');
+  const ln=n=>'<span data-ln="'+n+'">line '+n+'</span>';
+  const msgs=[];
+  if(diag.length)msgs.push('\u26A0 Unclosed: '+diag.map(d=>'<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>').join(', '));
+  if(sl.length)msgs.push('\u26A0 {{//}} is not removed by RisuAI and reaches the model; use {{comment::...}}: '+sl.slice(0,5).map(ln).join(', ')+(sl.length>5?' \u2026':''));
+  diagEl.innerHTML=msgs.join('<br>');
+  diagEl.classList.toggle('show',msgs.length>0);
 }
 _('diag').addEventListener('click',e=>{
   const s=e.target.closest('span[data-ln]');if(!s)return;
@@ -4826,7 +4844,7 @@ const REF_DATA = [
     examples: [{code: '{{user}}', out: 'UserName'}] },
   { cat: 'Identity & Context', name: '{{persona}}', aliases: ['userpersona'], sig: '{{persona}}',
     desc: 'Returns the active persona description text.',
-    examples: [{code: '{{persona}}', out: 'A young adventurer...'}] },
+    examples: [{code: '{{persona}}', out: 'A young adventurer...', approx: true}] },
   { cat: 'Identity & Context', name: '{{personality}}', aliases: ['charpersona'], sig: '{{personality}}',
     desc: "Returns the character's personality section.",
     examples: [{code: '{{personality}}'}] },
@@ -4844,7 +4862,7 @@ const REF_DATA = [
   { cat: 'Identity & Context', name: '{{globalnote}}', aliases: ['systemnote','ujb'], sig: '{{globalnote}}',
     desc: 'Returns the global note text.' },
   { cat: 'Identity & Context', name: '{{role}}', sig: '{{role}}',
-    desc: 'Returns the current message role (typically "char" or "user").' },
+    desc: 'Returns the role of the prompt item being parsed ("system", "user" or "bot"), or of the message in chat contexts. In the editor preview it is the selected prompt item\'s role; "null" when the item has none.' },
   { cat: 'Identity & Context', name: '{{model}}', sig: '{{model}}',
     desc: 'Returns the current model identifier.' },
   { cat: 'Identity & Context', name: '{{axmodel}}', sig: '{{axmodel}}',
@@ -4855,10 +4873,10 @@ const REF_DATA = [
     desc: 'Returns the current chat message index (0-based).' },
   { cat: 'Identity & Context', name: '{{lastmessageid}}', aliases: ['lastmessageindex'], sig: '{{lastmessageid}}',
     desc: 'Returns the ID/index of the last message.' },
-  { cat: 'Identity & Context', name: '{{isfirstmsg}}', sig: '{{isfirstmsg}}',
-    desc: 'Returns "1" if the current message is the first, "0" otherwise.' },
+  { cat: 'Identity & Context', name: '{{isfirstmsg}}', aliases: ['isfirstmessage'], sig: '{{isfirstmsg}}',
+    desc: 'Returns "1" if the current context is the first message/greeting, "0" otherwise.' },
   { cat: 'Identity & Context', name: '{{lastmessage}}', sig: '{{lastmessage}}',
-    desc: 'Returns the text of the last message.' },
+    desc: 'Returns the text of the last message in the chat, whatever its role. The editor preview simulates a short chat, so this shows a placeholder.' },
   { cat: 'Identity & Context', name: '{{previouscharchat}}', aliases: ['lastcharmessage'], sig: '{{previouscharchat}}',
     desc: 'Returns the most recent character message text.' },
   { cat: 'Identity & Context', name: '{{previoususerchat}}', aliases: ['lastusermessage'], sig: '{{previoususerchat}}',
@@ -4867,28 +4885,40 @@ const REF_DATA = [
     desc: 'Returns "1" if the jailbreak prompt is currently enabled, "0" otherwise.' },
   { cat: 'Identity & Context', name: '{{risu}}', sig: '{{risu}}',
     desc: 'Returns a marker indicating RisuAI execution context.' },
+  { cat: 'Identity & Context', name: '{{authornote}}', aliases: ['author_note'], sig: '{{authornote}}',
+    desc: "Returns the current chat's author's note, falling back to the prompt template's default author's note text." },
+  { cat: 'Identity & Context', name: '{{history}}', aliases: ['messages'], sig: '{{history}} or {{history::role}}',
+    desc: 'Returns the chat history as a JSON array. With "role", each entry is "role: text" instead of a message object.',
+    examples: [{code: '{{history::role}}', out: '["char: [Previous char message]","user: [Last user message]"]'}] },
+  { cat: 'Identity & Context', name: '{{lorebook}}', aliases: ['worldinfo'], sig: '{{lorebook}}',
+    desc: 'Returns the active lorebook entries (character, chat and module lorebooks) as a JSON array. Empty in the editor preview.' },
+  { cat: 'Identity & Context', name: '{{prefillsupported}}', aliases: ['prefill_supported', 'prefill'], sig: '{{prefillsupported}}',
+    desc: 'Returns "1" if the selected model supports response prefill (e.g. Claude models), "0" otherwise.' },
+  { cat: 'Identity & Context', name: '{{moduleenabled}}', aliases: ['module_enabled'], sig: '{{moduleenabled::namespace}}',
+    desc: 'Returns "1" if a module with the given namespace is enabled, "0" otherwise. Always "0" in the editor preview.' },
 
   // ============ VARIABLES ============
   { cat: 'Variables', name: '{{getvar}}', sig: '{{getvar::name}}',
-    desc: 'Reads a regular variable. Returns empty string if not set.',
-    examples: [{code: '{{setvar::score::42}}Score: {{getvar::score}}', out: 'Score: 42'}] },
+    desc: 'Reads a chat variable. If it was never set, falls back to the character\'s and the preset\'s default variables (the Vars tab here), and otherwise returns the text "null".',
+    examples: [{code: '{{getvar::never_set}}', out: 'null'}],
+    note: 'Test for unset variables with {{#when::{{getvar::x}}::is::null}} rather than an empty check.' },
   { cat: 'Variables', name: '{{setvar}}', sig: '{{setvar::name::value}}',
-    desc: 'Sets a regular variable. Returns empty string.',
-    examples: [{code: '{{setvar::hp::100}}{{getvar::hp}}', out: '100'}] },
+    desc: 'Sets a chat variable. It only runs where RisuAI executes variable commands (e.g. scripts and triggers). In a prompt-template item it is not executed: RisuAI leaves the tag in the text as-is, and the preview shows the same.',
+    examples: [{code: 'Before {{setvar::hp::100}}after', out: 'Before {{setvar::hp::100}}after'}],
+    note: 'To compute and reuse a value inside one prompt item, use {{settempvar}} / {{tempvar}}.' },
   { cat: 'Variables', name: '{{addvar}}', sig: '{{addvar::name::amount}}',
-    desc: 'Adds a numeric amount to an existing variable. Treats missing as 0.',
-    examples: [{code: '{{setvar::n::5}}{{addvar::n::3}}{{getvar::n}}', out: '8'}] },
-  { cat: 'Variables', name: '{{setdefaultvar}}', aliases: ['setdefault'], sig: '{{setdefaultvar::name::value}}',
-    desc: 'Sets a variable only if it has not been set yet. Useful for initialisation in templates.' },
+    desc: 'Adds a number to a chat variable. Like {{setvar}}, it only runs where RisuAI executes variable commands; in prompt-template items the tag is left as-is.' },
+  { cat: 'Variables', name: '{{setdefaultvar}}', sig: '{{setdefaultvar::name::value}}',
+    desc: 'Sets a chat variable only if it is unset, empty or "null". Like {{setvar}}, it only runs where RisuAI executes variable commands; in prompt-template items the tag is left as-is.' },
   { cat: 'Variables', name: '{{getglobalvar}}', sig: '{{getglobalvar::name}}',
-    desc: 'Reads a global chat variable (shared across the chat). Used for Custom Toggle values (with toggle_ prefix).',
-    examples: [{code: '{{getglobalvar::toggle_seq}}', out: '1'}] },
+    desc: 'Reads a global chat variable (shared across chats). Custom Toggle values live here with a toggle_ prefix. Returns "null" if unset.',
+    examples: [{code: '{{getglobalvar::toggle_seq}}', out: '1 (when the "seq" toggle is on)', approx: true}] },
   { cat: 'Variables', name: '{{tempvar}}', aliases: ['gettempvar'], sig: '{{tempvar::name}}',
-    desc: 'Reads a temporary variable. Tempvars exist only during the current parse/script execution and are cleared after.',
-    examples: [{code: '{{settempvar::roll::{{randint::1::6}}}}You rolled {{tempvar::roll}}.', out: 'You rolled 4.'}] },
+    desc: 'Reads a temporary variable set earlier in the same parse with {{settempvar}}. Returns an empty string if unset.',
+    examples: [{code: '{{settempvar::roll::{{dice::1d6}}}}You rolled {{tempvar::roll}}.', out: 'You rolled 4.', approx: true}] },
   { cat: 'Variables', name: '{{settempvar}}', sig: '{{settempvar::name::value}}',
-    desc: 'Sets a temporary variable. Returns empty string. Tempvars are scoped to the current parse only.',
-    note: 'Use tempvars (not regular vars) for randomised intermediate results so they do not pollute persistent storage.' },
+    desc: 'Sets a temporary variable for the rest of the current parse and returns an empty string. Unlike {{setvar}}, this works inside prompt-template items.',
+    note: 'Use tempvars for intermediate results, such as a roll you want to reference twice.' },
 
   // ============ CONDITIONAL BLOCKS ============
   { cat: 'Conditional Blocks', name: '{{#if}}', sig: '{{#if condition}}...{{/if}}',
@@ -4942,7 +4972,7 @@ const REF_DATA = [
     examples: [{code: '{{#pure}}{{getvar::x}}{{/pure}}', out: '{{getvar::x}}'}] },
   { cat: 'Structural Blocks', name: '{{#puredisplay}}', aliases: ['pure_display'], sig: '{{#puredisplay}}...{{/puredisplay}}',
     desc: 'Displays the content without any CBS processing. Useful for raw HTML or for showing CBS syntax literally. Replaces the deprecated #pure.',
-    examples: [{code: '{{#puredisplay}}{{getvar::x}}{{/puredisplay}}', out: '{{getvar::x}}'}],
+    examples: [{code: '{{#puredisplay}}{{getvar::x}}{{/puredisplay}}', out: '{{getvar::x}}', approx: true}],
     note: 'Braces are passed through escaped, so this preview shows \\{\\{getvar::x\\}\\}. RisuAI displays them as plain {{ }}.' },
   { cat: 'Structural Blocks', name: '{{#escape}}', sig: '{{#escape}}...{{/escape}}',
     desc: 'Escapes special characters (curly braces, etc.) within the block.' },
@@ -4960,7 +4990,7 @@ const REF_DATA = [
     examples: [
       {code: '{{? 2+3*4}}', out: '14'},
       {code: '{{? (5>3) && (2<4)}}', out: '1'},
-      {code: '{{? {{getvar::hp}}=100}}', out: '1 or 0'}
+      {code: '{{? {{getvar::hp}}=100}}', out: '1 or 0', approx: true}
     ],
     operators: [
       ['+', 'addition'],
@@ -4982,8 +5012,9 @@ const REF_DATA = [
     ],
     note: 'RisuAI uses an RPN calculator, not JavaScript eval. Single = works as equality. Parentheses are supported.' },
   { cat: 'Calc Expressions', name: '{{calc}}', sig: '{{calc::expression}}',
-    desc: 'Long-form alias for {{? ...}}. Evaluates a math expression.',
-    examples: [{code: '{{calc::10*5+3}}', out: '53'}] },
+    desc: 'Long-form alias for {{? ...}}. Evaluates a math expression. Only the first argument is used.',
+    examples: [{code: '{{calc::10*5+3}}', out: '53'}],
+    note: 'Inside expressions, $name reads a chat variable and @name a global variable as numbers (non-numbers count as 0), e.g. {{? $hp*2}}.' },
 
   // ============ MATH FUNCTIONS ============
   { cat: 'Math', name: '{{round}}', sig: '{{round::number}}',
@@ -5007,21 +5038,30 @@ const REF_DATA = [
   { cat: 'Math', name: '{{fixnum}}', aliases: ['fixnumber'], sig: '{{fixnum::n::decimals}}',
     desc: 'Formats a number to fixed decimal places.',
     examples: [{code: '{{fixnum::3.14159::2}}', out: '3.14'}] },
-  { cat: 'Math', name: '{{min}}', sig: '{{min::a::b::c::...}}',
-    desc: 'Returns the smallest numeric value among arguments.',
-    examples: [{code: '{{min::3::1::4::1::5}}', out: '1'}] },
-  { cat: 'Math', name: '{{max}}', sig: '{{max::a::b::c::...}}',
-    desc: 'Returns the largest numeric value among arguments.',
-    examples: [{code: '{{max::3::1::4::1::5}}', out: '5'}] },
-  { cat: 'Math', name: '{{sum}}', sig: '{{sum::a::b::c::...}}',
-    desc: 'Sum of all numeric arguments.',
+  { cat: 'Math', name: '{{min}}', sig: '{{min::a::b::...}} or {{min::[a,b,...]}}',
+    desc: 'Returns the smallest number. Takes several arguments or one JSON array; non-numeric values count as 0.',
+    examples: [{code: '{{min::[3,1,2]}}', out: '1'}] },
+  { cat: 'Math', name: '{{max}}', sig: '{{max::a::b::...}} or {{max::[a,b,...]}}',
+    desc: 'Returns the largest number. Takes several arguments or one JSON array; non-numeric values count as 0.',
+    examples: [{code: '{{max::3::1::4}}', out: '4'}] },
+  { cat: 'Math', name: '{{sum}}', sig: '{{sum::a::b::...}} or {{sum::[a,b,...]}}',
+    desc: 'Sum of the numbers. Takes several arguments or one JSON array; non-numeric values count as 0.',
     examples: [{code: '{{sum::1::2::3::4}}', out: '10'}] },
-  { cat: 'Math', name: '{{average}}', sig: '{{average::a::b::c::...}}',
-    desc: 'Arithmetic mean of numeric arguments.',
+  { cat: 'Math', name: '{{average}}', sig: '{{average::a::b::...}} or {{average::[a,b,...]}}',
+    desc: 'Arithmetic mean. Takes several arguments or one JSON array; non-numeric values count as 0 (and still count toward the divisor).',
     examples: [{code: '{{average::2::4::6}}', out: '4'}] },
   { cat: 'Math', name: '{{tonumber}}', sig: '{{tonumber::string}}',
     desc: 'Extracts numeric characters (digits and decimal point) from a string.',
     examples: [{code: '{{tonumber::price$12.50abc}}', out: '12.50'}] },
+  { cat: 'Math', name: '{{hash}}', sig: '{{hash::text}}',
+    desc: 'Returns a deterministic 7-digit number derived from the text. The same text always gives the same number, which is handy for stable "random" choices.',
+    examples: [{code: '{{hash::hello}}', out: '0121468'}] },
+  { cat: 'Math', name: '{{tohex}}', sig: '{{tohex::number}}',
+    desc: 'Converts a decimal number to hexadecimal.',
+    examples: [{code: '{{tohex::255}}', out: 'ff'}] },
+  { cat: 'Math', name: '{{fromhex}}', sig: '{{fromhex::hex}}',
+    desc: 'Converts a hexadecimal string to a decimal number.',
+    examples: [{code: '{{fromhex::FF}}', out: '255'}] },
 
   // ============ COMPARISON ============
   { cat: 'Comparison', name: '{{equal}}', sig: '{{equal::a::b}}',
@@ -5048,23 +5088,25 @@ const REF_DATA = [
 
   // ============ LOGIC ============
   { cat: 'Logic', name: '{{and}}', sig: '{{and::a::b}}',
-    desc: 'Logical AND of two truthy values. "1" or "0".' },
+    desc: 'Returns "1" only if both arguments are exactly "1". Any other value, including "true", counts as false.',
+    examples: [{code: '{{and::1::1}} {{and::1::true}}', out: '1 0'}] },
   { cat: 'Logic', name: '{{or}}', sig: '{{or::a::b}}',
-    desc: 'Logical OR.' },
+    desc: 'Returns "1" if either argument is exactly "1". Any other value, including "true", counts as false.' },
   { cat: 'Logic', name: '{{not}}', sig: '{{not::a}}',
-    desc: 'Logical NOT.' },
-  { cat: 'Logic', name: '{{all}}', sig: '{{all::a::b::c::...}}',
-    desc: 'Returns "1" if ALL arguments are truthy. Useful for multi-condition #if.',
-    examples: [{code: '{{#if {{all::{{getvar::a}}::{{getvar::b}}::{{getvar::c}}}} }}YES{{/if}}'}] },
-  { cat: 'Logic', name: '{{any}}', sig: '{{any::a::b::c::...}}',
-    desc: 'Returns "1" if ANY argument is truthy.',
+    desc: 'Returns "0" if the argument is exactly "1", otherwise "1". Note that {{not::true}} is "1".',
+    examples: [{code: '{{not::1}} {{not::true}}', out: '0 1'}] },
+  { cat: 'Logic', name: '{{all}}', sig: '{{all::a::b::c::...}} or {{all::[a,b,...]}}',
+    desc: 'Returns "1" if every value is exactly "1". Takes several arguments or one JSON array.',
+    examples: [{code: '{{#when {{all::{{getvar::a}}::{{getvar::b}}}} }}YES{{/when}}'}] },
+  { cat: 'Logic', name: '{{any}}', sig: '{{any::a::b::c::...}} or {{any::[a,b,...]}}',
+    desc: 'Returns "1" if any value is exactly "1". Takes several arguments or one JSON array.',
     examples: [{code: '{{any::{{? {{getvar::x}}>=1}}::{{? {{getvar::y}}>=1}}}}'}] },
 
   // ============ STRING ============
-  { cat: 'String', name: '{{lower}}', aliases: ['lowercase'], sig: '{{lower::string}}',
+  { cat: 'String', name: '{{lower}}', sig: '{{lower::string}}',
     desc: 'Converts to lowercase.',
     examples: [{code: '{{lower::HELLO}}', out: 'hello'}] },
-  { cat: 'String', name: '{{upper}}', aliases: ['uppercase'], sig: '{{upper::string}}',
+  { cat: 'String', name: '{{upper}}', sig: '{{upper::string}}',
     desc: 'Converts to uppercase.',
     examples: [{code: '{{upper::hello}}', out: 'HELLO'}] },
   { cat: 'String', name: '{{capitalize}}', sig: '{{capitalize::string}}',
@@ -5081,15 +5123,24 @@ const REF_DATA = [
   { cat: 'String', name: '{{replace}}', sig: '{{replace::string::find::with}}',
     desc: 'Replaces all occurrences of "find" with "with".',
     examples: [{code: '{{replace::hello world::world::there}}', out: 'hello there'}] },
+  { cat: 'String', name: '{{bkspc}}', sig: '{{bkspc}}',
+    desc: 'Removes the last word from the output produced so far.',
+    examples: [{code: 'hello world {{bkspc}} user', out: 'hello user'}] },
+  { cat: 'String', name: '{{erase}}', sig: '{{erase}}',
+    desc: 'Removes the last sentence from the output produced so far.' },
 
   // ============ ARRAY ============
   { cat: 'Array', name: '{{makearray}}', aliases: ['array','a'], sig: '{{makearray::a::b::c::...}}',
     desc: 'Constructs an array from arguments. Returns a serialised array (use other array functions to operate on it).',
     examples: [{code: '{{makearray::one::two::three}}'}] },
   { cat: 'Array', name: '{{arrayelement}}', sig: '{{arrayelement::array::index}}',
-    desc: 'Returns the element at the given 0-based index.',
-    examples: [{code: '{{arrayelement::{{makearray::a::b::c}}::1}}', out: 'b'}],
+    desc: 'Returns the element at the given 0-based index. Negative indexes count from the end; out of range returns "null".',
+    examples: [{code: '{{arrayelement::{{makearray::a::b::c}}::1}} {{arrayelement::{{makearray::a::b::c}}::-1}}', out: 'b c'}],
     note: 'Name has no underscore. {{array_element}} is not recognised.' },
+  { cat: 'Array', name: '{{element}}', aliases: ['ele'], sig: '{{element::json::key}}',
+    desc: 'Reads a key or index from a JSON array/object. Returns "null" if it is missing.',
+    examples: [{code: '{{element::{{makedict::name=Alice}}::name}}', out: 'Alice'}],
+    note: 'Multiple keys (e.g. ::user::name) are meant to walk into nested data, but current RisuAI re-reads each step as JSON text, so lookups past the first level return "null".' },
   { cat: 'Array', name: '{{arraylength}}', sig: '{{arraylength::array}}',
     desc: 'Returns the length of an array.',
     examples: [{code: '{{arraylength::{{makearray::a::b::c}}}}', out: '3'}] },
@@ -5103,41 +5154,60 @@ const REF_DATA = [
     desc: 'Splits a string into an array on the delimiter.',
     examples: [{code: '{{split::a,b,c::,}}'}] },
   { cat: 'Array', name: '{{join}}', sig: '{{join::array::separator}}',
-    desc: 'Joins array elements into a single string with the separator.',
+    desc: 'Joins array elements into a single string with the separator (a comma if omitted).',
     examples: [{code: '{{join::{{makearray::a::b::c}}::, }}', out: 'a, b, c'}] },
-  { cat: 'Array', name: '{{spread}}', sig: '{{spread::array::separator}}',
-    desc: 'Spreads array values as a string. Default separator is ", ".' },
+  { cat: 'Array', name: '{{spread}}', sig: '{{spread::array}}',
+    desc: 'Joins array elements with "::", so an array can be spread into another function\'s arguments.',
+    examples: [{code: '{{spread::{{makearray::a::b::c}}}}', out: 'a::b::c'}] },
   { cat: 'Array', name: '{{filter}}', sig: '{{filter::array::type}}',
-    desc: 'Filters array: "nonempty" removes empty values, "unique" removes duplicates, "all" applies both.',
-    examples: [{code: '{{filter::{{makearray::a::::b::a}}::all}}', out: 'array of [a, b]'}] },
-  { cat: 'Array', name: '{{range}}', sig: '{{range::start::end::step}}',
-    desc: 'Generates a numeric range as an array. Step defaults to 1.',
-    examples: [{code: '{{range::1::5::1}}', out: '[1, 2, 3, 4, 5]'}] },
+    desc: 'Filters an array: "nonempty" removes empty values, "unique" removes duplicates, "all" (the default for any other type) does both.',
+    examples: [{code: '{{filter::{{makearray::a::::b::a}}::all}}', out: '["a","b"]'}] },
+  { cat: 'Array', name: '{{range}}', sig: '{{range::[end]}} or {{range::[start,end,step]}}',
+    desc: 'Generates a numeric range as an array. The single argument is a JSON array; the end is excluded.',
+    examples: [{code: '{{range::[5]}}', out: '["0","1","2","3","4"]'}, {code: '{{range::[2,8,2]}}', out: '["2","4","6"]'}] },
+  { cat: 'Array', name: '{{arraysplice}}', sig: '{{arraysplice::array::start::deleteCount::newItem}}',
+    desc: 'Removes deleteCount items at start and inserts newItem there; returns the new array.',
+    examples: [{code: '{{arraysplice::{{makearray::a::b::c}}::1::1::x}}', out: '["a","x","c"]'}] },
+  { cat: 'Array', name: '{{arrayassert}}', sig: '{{arrayassert::array::index::value}}',
+    desc: 'Sets the element at index only if the array does not reach that index yet (extending it); returns the new array.' },
 
   // ============ DICTIONARY ============
   { cat: 'Dictionary', name: '{{makedict}}', aliases: ['dict','d','object','o','makeobject'], sig: '{{makedict::key1=value1::key2=value2}}',
     desc: 'Constructs a dictionary/object from key=value pairs.',
     examples: [{code: '{{makedict::name=Alice::age=30}}'}] },
   { cat: 'Dictionary', name: '{{dictelement}}', aliases: ['objectelement'], sig: '{{dictelement::dict::key}}',
-    desc: 'Looks up a value by key.',
+    desc: 'Looks up a value by key. Returns "null" if the key is missing.',
     examples: [{code: '{{dictelement::{{makedict::a=1::b=2}}::a}}', out: '1'}] },
+  { cat: 'Dictionary', name: '{{objectassert}}', aliases: ['dictassert', 'object_assert'], sig: '{{objectassert::dict::key::value}}',
+    desc: 'Sets key to value only if the key does not exist yet; returns the new object.',
+    examples: [{code: '{{objectassert::{{makedict::a=1}}::b::2}}', out: '{"a":"1","b":"2"}'}] },
 
   // ============ RANDOM ============
-  { cat: 'Random', name: '{{random}}', sig: '{{random::a::b::c::...}} or {{random}}',
-    desc: 'Picks a random argument. With no arguments, returns a random number between 0 and 1.',
-    examples: [{code: '{{random::red::green::blue}}'}] },
-  { cat: 'Random', name: '{{pick}}', sig: '{{pick::a::b::c::...}}',
-    desc: 'Picks a random argument. Equivalent to {{random}} with arguments.' },
+  { cat: 'Random', name: '{{random}}', sig: '{{random::a::b::c}} or {{random::a,b,c}} or {{random}}',
+    desc: 'Picks a random item. With several arguments, picks one of them. With one argument, splits it on commas and colons (write \\, for a literal comma), or picks from it if it is a JSON array. With no arguments, returns a random number between 0 and 1.',
+    examples: [{code: '{{random::red,green,blue}}'}, {code: '{{random::red::green::blue}}'}] },
+  { cat: 'Random', name: '{{pick}}', sig: '{{pick::a::b::c}} or {{pick::a,b,c}}',
+    desc: 'Like {{random}}, but the choice is derived from the chat and message instead of being re-rolled each time, so the same message keeps the same pick.',
+    note: 'In the editor, the re-roll button simulates a different chat, which changes picks.' },
   { cat: 'Random', name: '{{randint}}', sig: '{{randint::min::max}}',
     desc: 'Random integer between min and max (inclusive).',
     examples: [{code: '{{randint::1::6}}'}] },
-  { cat: 'Random', name: '{{dice}}', sig: '{{dice::sides}}',
-    desc: 'Rolls an N-sided die. Returns 1 to N.',
-    examples: [{code: '{{dice::20}}', out: 'random 1 to 20'}] },
+  { cat: 'Random', name: '{{dice}}', sig: '{{dice::XdY}}',
+    desc: 'Rolls X dice with Y sides each and returns the total. The argument must be in XdY form; a bare number such as {{dice::20}} returns "NaN".',
+    examples: [{code: '{{dice::2d6}}', out: 'random 2 to 12', approx: true}],
+    note: 'For a single die from a plain number, use {{roll::20}}.' },
+  { cat: 'Random', name: '{{roll}}', sig: '{{roll::XdY}} or {{roll::N}}',
+    desc: 'Rolls dice and returns the total. Accepts XdY, or a plain number of sides for one die; defaults to 1d6.',
+    examples: [{code: '{{roll::20}}', out: 'random 1 to 20', approx: true}, {code: '{{roll::3d6}}', out: 'random 3 to 18', approx: true}] },
+  { cat: 'Random', name: '{{rollp}}', aliases: ['rollpick'], sig: '{{rollp::XdY}}',
+    desc: 'Like {{roll}}, but stable for the same chat and message (as {{pick}} is to {{random}}).' },
 
   // ============ TIME ============
-  { cat: 'Time', name: '{{time}}', sig: '{{time}}',
-    desc: 'Local time as a string.' },
+  { cat: 'Time', name: '{{time}}', sig: '{{time}} or {{time::format}}',
+    desc: 'Current local time. With a format argument it works like {{date}}.' },
+  { cat: 'Time', name: '{{date}}', aliases: ['datetimeformat'], sig: '{{date::format}} or {{date::format::timestamp}}',
+    desc: 'Formats the current date/time (or a unix timestamp in milliseconds). Tokens: YYYY YY MMMM MMM MM DD DDDD dddd ddd HH hh mm ss A X (unix seconds) x (ms).',
+    examples: [{code: '{{date::YYYY-MM-DD HH:mm}}', out: '2026-10-17 21:45', approx: true}] },
   { cat: 'Time', name: '{{isotime}}', sig: '{{isotime}}',
     desc: 'Current time in ISO 8601 format.' },
   { cat: 'Time', name: '{{isodate}}', sig: '{{isodate}}',
@@ -5147,10 +5217,10 @@ const REF_DATA = [
 
   // ============ ESCAPE ============
   { cat: 'Escape', name: '{{bo}}', aliases: ['ddecbo'], sig: '{{bo}}',
-    desc: 'Outputs literal "{{". Use to display CBS syntax in output.',
+    desc: 'Outputs "{{" as escape characters that display as braces but are never parsed as CBS again (even after #each re-inserts text).',
     examples: [{code: '{{bo}}getvar::x{{bc}}', out: '{{getvar::x}}'}] },
   { cat: 'Escape', name: '{{bc}}', aliases: ['ddecbc'], sig: '{{bc}}',
-    desc: 'Outputs literal "}}".' },
+    desc: 'Outputs "}}" as escape characters, the counterpart of {{bo}}.' },
   { cat: 'Escape', name: '{{decbo}}', aliases: ['displayescapedcurlybracketopen'], sig: '{{decbo}}',
     desc: 'Outputs a single literal "{".' },
   { cat: 'Escape', name: '{{decbc}}', aliases: ['displayescapedcurlybracketclose'], sig: '{{decbc}}',
@@ -5167,20 +5237,23 @@ const REF_DATA = [
     desc: 'Outputs literal ":". Useful inside argument lists where :: would split.' },
   { cat: 'Escape', name: '{{displayescapedsemicolon}}', sig: '{{displayescapedsemicolon}}',
     desc: 'Outputs literal ";".' },
-  { cat: 'Escape', name: '{{br}}', aliases: ['newline'], sig: '{{br::n}}',
-    desc: 'Inserts n newlines (default 1).',
+  { cat: 'Escape', name: '{{br}}', aliases: ['newline'], sig: '{{br}}',
+    desc: 'Inserts a single newline. Arguments are ignored.',
     examples: [{code: 'Line 1{{br}}Line 2', out: 'Line 1\nLine 2'}] },
-  { cat: 'Escape', name: '{{cbr}}', aliases: ['cnl','cnewline'], sig: '{{cbr::n}}',
-    desc: 'Inserts n newlines, but in a context that survives certain CSS/rendering whitespace collapsing.' },
-  { cat: 'Escape', name: '{{blank}}', sig: '{{blank}}',
+  { cat: 'Escape', name: '{{cbr}}', aliases: ['cnl','cnewline'], sig: '{{cbr}}',
+    desc: 'Outputs the two characters \\n (backslash, n) rather than a real newline, for places that expect an escaped newline.',
+    examples: [{code: 'a{{cbr}}b', out: 'a\\nb'}],
+    note: 'RisuAI currently mishandles a count argument ({{cbr::3}} repeats the tag text), so use plain {{cbr}}.' },
+  { cat: 'Escape', name: '{{blank}}', aliases: ['none'], sig: '{{blank}}',
     desc: 'Returns an empty string. Useful as a no-op or placeholder.' },
 
   // ============ COMMENTS ============
-  { cat: 'Comments', name: '{{//}}', sig: '{{//::your comment}}',
-    desc: 'Inline comment. Stripped from output. Use for notes inside the template.',
-    examples: [{code: '{{//::TODO: refine wording later}}'}] },
+  { cat: 'Comments', name: '{{//}}', sig: '{{// your comment}}',
+    desc: 'Comment syntax listed in RisuAI\'s documentation, but its parser does not remove it from prompts: the tag is left in the text and sent to the model (it is only ignored when matching lorebook keywords). Use {{comment::...}} for notes that must not reach the model.',
+    examples: [{code: 'A{{//::note}}B', out: 'A{{//::note}}B'}] },
   { cat: 'Comments', name: '{{comment}}', sig: '{{comment::your comment}}',
-    desc: 'Long-form alias for {{//}}.' },
+    desc: 'A comment that is removed from prompts. When displayed in chat, RisuAI shows it as a comment box.',
+    examples: [{code: 'A{{comment::note}}B', out: 'AB'}] },
 
   // ============ MISC ============
   { cat: 'Miscellaneous', name: '{{button}}', sig: '{{button::label::action}}',
@@ -5189,6 +5262,8 @@ const REF_DATA = [
     desc: 'Embeds a character asset (image, file).' },
   { cat: 'Miscellaneous', name: '{{emotion}}', sig: '{{emotion::name}}',
     desc: 'Displays a character emotion sprite by name.' },
+  { cat: 'Miscellaneous', name: '{{hiddenkey}}', aliases: ['hidden_key'], sig: '{{hiddenkey::keyword}}',
+    desc: 'Outputs nothing, but its keyword still counts for lorebook activation. Use it to trigger lore entries without the keyword appearing in the request.' },
 ];
 
 const REF_STATE = { active: null, query: '' };
