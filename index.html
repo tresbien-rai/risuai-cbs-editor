@@ -885,7 +885,7 @@ function highlightCBS(text, activeFlags, caret) {
   return parts.join('');
 }
 highlightCBS._diag = []; highlightCBS._blocks = []; highlightCBS._active = null;
-function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
 
 // RPack: Simple byte substitution (from RisuAI source)
 // ============================================================
@@ -1087,7 +1087,8 @@ const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
 ed.value='{{//::CBS Editor v6.3}}';
 
-function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');setTimeout(()=>toastEl.className='toast',2500);}
+let toastT;
+function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.className='toast',2500);}
 function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;}
 function setPFS(v){S.pfs=Math.max(10,Math.min(18,v));document.documentElement.style.setProperty('--pfs',S.pfs+'px');_('pL').textContent=S.pfs;}
 function setUS(v){S.us=Math.max(80,Math.min(180,v));document.documentElement.style.setProperty('--us',(S.us/100).toString());_('uL').textContent=S.us;}
@@ -1270,7 +1271,7 @@ function saveEdit(){
 function loadPreset(pr){
   S.preset=pr;S.presetName=pr.name||'Unnamed';
   S.promptTemplate=pr.promptTemplate||[];S.manualVars=[];
-  if(pr.customPromptTemplateToggle)applyPanel(pr.customPromptTemplateToggle);
+  S.panelValues={};applyPanel(pr.customPromptTemplateToggle||'');
   if(pr.templateDefaultVariables){
     for(const ln of pr.templateDefaultVariables.trim().split('\n')){
       const eq=ln.indexOf('=');if(eq===-1)continue;
@@ -1284,7 +1285,7 @@ function loadPreset(pr){
     const i=S.promptTemplate.findIndex(p=>isEd(p)&&itFields(p).some(f=>p[f]&&p[f].length>0));
     if(i!==-1){S.activeIdx=i;S.activeField=itFields(S.promptTemplate[i])[0];ed.value=itText(S.promptTemplate[i],S.activeField);S.mode='prompt';}
   }
-  if(S.activeIdx===-1&&pr.mainPrompt){ed.value=pr.mainPrompt;S.mode='free';}
+  if(S.activeIdx===-1){ed.value=pr.mainPrompt||'';S.mode='free';}
   crumb();update();renderNav();
   if(S.bTab==='panel')renderPanel();
   if(S.bTab==='vars')renderVars();
@@ -1295,7 +1296,8 @@ function buildExport(){
   saveEdit();const p=S.preset?{...S.preset}:{};
   p.name=S.presetName||'CBS Export';
   if(S.promptTemplate.length>0)p.promptTemplate=S.promptTemplate;
-  if(S.panelText)p.customPromptTemplateToggle=S.panelText;
+  // Write back even when cleared, so emptying the panel removes the toggles
+  if(S.panelText||'customPromptTemplateToggle' in p)p.customPromptTemplateToggle=S.panelText;
   return p;
 }
 
@@ -1549,7 +1551,7 @@ _('pD').addEventListener('click',()=>setPFS(S.pfs-1));_('pI').addEventListener('
 _('uD').addEventListener('click',()=>setUS(S.us-10));_('uI').addEventListener('click',()=>setUS(S.us+10));
 _('bTheme').addEventListener('click',()=>{
   document.documentElement.classList.toggle('light');
-  _('bTheme').textContent = document.documentElement.classList.contains('light') ? '\u263E' : '\u2606';
+  _('bTheme').textContent = document.documentElement.classList.contains('light') ? '\u263E' : '\u263C';
 });
 _('bFont').addEventListener('click',e=>{e.stopPropagation();_('ddFont').classList.toggle('open');});
 document.addEventListener('click',e=>{
@@ -1602,7 +1604,12 @@ function onCaret(){
 }
 ['keyup','mouseup','focus','select'].forEach(ev=>ed.addEventListener(ev,onCaret));
 document.addEventListener('selectionchange',()=>{if(document.activeElement===ed)onCaret();});
-ed.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=ed.selectionStart,n=ed.selectionEnd,v=ed.value;ed.value=v.substring(0,s)+'  '+v.substring(n);ed.selectionStart=ed.selectionEnd=s+2;saveEdit();sched();}});
+ed.addEventListener('keydown',e=>{
+  if(e.key!=='Tab')return;
+  e.preventDefault();
+  // execCommand keeps the native undo stack (assigning ed.value wipes it); it fires 'input' itself
+  if(!document.execCommand('insertText',false,'  ')){ed.setRangeText('  ',ed.selectionStart,ed.selectionEnd,'end');saveEdit();sched();}
+});
 cN.addEventListener('input',sched);uN.addEventListener('input',sched);
 
 // Bottom tabs
@@ -1731,6 +1738,7 @@ function applyPanel(txt){
   S.panelValues=nv;
 }
 
+const panelRO=new ResizeObserver(es=>{for(const e of es)if(e.target.offsetHeight)S.panelHeight=e.target.offsetHeight;});
 function renderPanel(){
   let h='<div class="sec"><div class="st" style="display:flex;align-items:center;gap:6px"><span>Custom Toggles</span><span style="flex:1"></span><button class="ref-btn" id="pRefBtn" title="Show Custom Toggles syntax">'+(S.panelRefOpen?'Hide':'Toggle Syntax')+'</button></div>';
   if(S.panelRefOpen)h+=panelSyntaxRef();
@@ -1748,9 +1756,9 @@ function renderPanel(){
   tc.panel.innerHTML=h;
   _('pApp')?.addEventListener('click',()=>{applyPanel(_('pSrc')?.value??'');renderPanel();sched();});
   _('pRefBtn')?.addEventListener('click',()=>{S.panelRefOpen=!S.panelRefOpen;renderPanel();});
-  // Persist textarea resize
-  const ta=_('pSrc');
-  if(ta){new ResizeObserver(()=>{S.panelHeight=ta.offsetHeight;}).observe(ta);}
+  // Persist textarea resize (ignore the 0 reported while the tab is hidden)
+  panelRO.disconnect();
+  const ta=_('pSrc');if(ta)panelRO.observe(ta);
   tc.panel.querySelectorAll('[data-cs]').forEach(s=>{s.addEventListener('change',e=>{S.panelValues[e.target.dataset.cs]=e.target.value;sched();});});
   tc.panel.querySelectorAll('[data-cx]').forEach(s=>{s.addEventListener('input',e=>{S.panelValues[e.target.dataset.cx]=e.target.value;sched();});});
   tc.panel.querySelectorAll('[data-ct]').forEach(b=>{
