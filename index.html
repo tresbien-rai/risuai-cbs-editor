@@ -389,356 +389,3313 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
   </div>
 </div>
 <script>
-// RPN calculator matching RisuAI's infunctions.ts
-function toRPN(expression) {
-  let outputQueue = '';
-  let operatorStack = [];
-  const operators = {
-    '+': {p:2, a:'L'}, '-': {p:2, a:'L'}, '*': {p:3, a:'L'}, '/': {p:3, a:'L'},
-    '^': {p:4, a:'L'}, '%': {p:3, a:'L'}, '<': {p:1, a:'L'}, '>': {p:1, a:'L'},
-    '|': {p:1, a:'L'}, '&': {p:1, a:'L'}, '\u2264': {p:1, a:'L'}, '\u2265': {p:1, a:'L'},
-    '=': {p:1, a:'L'}, '\u2260': {p:1, a:'L'}, '!': {p:5, a:'R'}
+// ============================================================
+// CBS engine host
+// ============================================================
+// The CBS engine below is RisuAI's own parser and function registry, generated from
+// RisuAI's source by tools/sync-risu.mjs. RisuHost stands in for the parts of RisuAI it
+// reaches into (database, current character/chat, chat variables), simulating one
+// character with an empty chat, so the preview behaves as RisuAI does for a prompt item.
+const RisuHost = (function(){
+  let ctx = null;  // {db, char, chat}; set for the duration of one parse
+  const store = v => ({ v });
+  const kv = t => (t || '').split('\n').map(l => l.split('=')).filter(([k, v]) => k && v);
+  return {
+    _use(c){ ctx = c; },
+    get: s => s.v,
+    DBState: { get db(){ return ctx.db; } },
+    selectedCharID: store(0),
+    CurrentTriggerIdStore: store(null),
+    getDatabase: () => ctx.db,
+    // Mirrors RisuAI's chatVar.svelte.ts: unset variables fall back to the character's and
+    // the preset's default variables, then read as the string "null".
+    getChatVar(key){
+      const st = ctx.chat.scriptstate['$' + key];
+      if (st === undefined || st === null) {
+        const d = kv(ctx.char.defaultVariables).concat(kv(ctx.db.templateDefaultVariables)).find(f => f[0] === key);
+        return d ? d[1] : 'null';
+      }
+      return st.toString();
+    },
+    setChatVar(key, value){ ctx.chat.scriptstate['$' + key] = value; return true; },
+    getGlobalChatVar: key => ctx.db.globalChatVariables[key] ?? 'null',
+    getPersonaPrompt: () => ctx.persona,
+    getUserName: () => ctx.userName,
+    findCharacterbyId: () => ctx.char,
+    getModules: () => [],
+    getModuleLorebooks: () => [],
+    getModelInfo: id => ({ id, name: id, shortName: id, internalID: id, format: 0, provider: 0, tokenizer: 0, flags: [] }),
+    isTauri: false,
+    isNodeServer: false,
+    appVer: 'cbs-editor',
+    safeStructuredClone: o => { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)); } },
   };
-  const opKeys = Object.keys(operators);
-  expression = expression.replace(/\s+/g, '');
-  const tokens = [];
-  let last = '';
-  for (let i = 0; i < expression.length; i++) {
-    const c = expression[i];
-    if (c === '-' && (i === 0 || opKeys.includes(expression[i-1]) || expression[i-1] === '(')) { last += c; }
-    else if (opKeys.includes(c)) { tokens.push(last || '0'); last = ''; tokens.push(c); }
-    else { last += c; }
-  }
-  tokens.push(last || '0');
-  tokens.forEach(t => {
-    if (parseFloat(t) || t === '0') { outputQueue += t + ' '; }
-    else if (opKeys.includes(t)) {
-      while (operatorStack.length > 0 &&
-        ((operators[t].a === 'L' && operators[t].p <= operators[operatorStack[operatorStack.length-1]].p) ||
-         (operators[t].a === 'R' && operators[t].p < operators[operatorStack[operatorStack.length-1]].p))) {
-        outputQueue += operatorStack.pop() + ' ';
-      }
-      operatorStack.push(t);
-    }
-  });
-  while (operatorStack.length > 0) outputQueue += operatorStack.pop() + ' ';
-  return outputQueue.trim();
-}
-function evalRPN(expression) {
-  const stack = [];
-  expression.split(' ').forEach(t => {
-    if (parseFloat(t) || t === '0') { stack.push(parseFloat(t)); }
-    else {
-      let b = stack.pop() || 0, a = stack.pop() || 0;
-      switch (t) {
-        case '+': stack.push(a+b); break; case '-': stack.push(a-b); break;
-        case '*': stack.push(a*b); break; case '/': stack.push(a/b); break;
-        case '^': stack.push(a**b); break; case '%': stack.push(a%b); break;
-        case '<': stack.push(a<b?1:0); break; case '>': stack.push(a>b?1:0); break;
-        case '|': stack.push(a||b); break; case '&': stack.push(a&&b); break;
-        case '\u2264': stack.push(a<=b?1:0); break; case '\u2265': stack.push(a>=b?1:0); break;
-        case '=': stack.push(a===b?1:0); break; case '\u2260': stack.push(a!==b?1:0); break;
-        case '!': stack.push(b?0:1); break;
-      }
-    }
-  });
-  return stack.length ? stack.pop() : 0;
-}
-function calcString(text) {
-  try {
-    // Handle parentheses with depth tracking (matching RisuAI)
-    const depth = [''];
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === '(') { depth.push(''); }
-      else if (text[i] === ')' && depth.length > 1) { depth[depth.length-2] += evalRPN(toRPN(depth.pop())); }
-      else { depth[depth.length-1] += text[i]; }
-    }
-    // Normalize operators before RPN conversion
-    let expr = depth.join('');
-    expr = expr.replace(/&&/g, '&').replace(/\|\|/g, '|')
-              .replace(/<=/g, '\u2264').replace(/>=/g, '\u2265')
-              .replace(/==/g, '=').replace(/!=/g, '\u2260')
-              .replace(/null/gi, '0');
-    return evalRPN(toRPN(expr));
-  } catch { return 0; }
-}
-function parseArray(p1) {
-  try { const a = JSON.parse(p1); return Array.isArray(a) ? a : p1.split("\u00A7"); }
-  catch { return p1.split("\u00A7"); }
-}
-function makeArray(arr) {
-  return JSON.stringify(arr.map(f => typeof f === "string" ? f.replace(/::/g,"\\u003A\\u003A") : f));
-}
-function isTruthy(s) { return s === "true" || s === "1"; }
+})();
 
-function createCBSParser(config) {
-  const { charName="Character", userName="User", variables={}, toggles={}, persona="", rngSeed=null } = config;
-  const vars = { ...variables };
-  // Seeded PRNG (mulberry32). When rngSeed is provided, randomness is deterministic
-  // for a given seed, so re-parsing the same text does not re-roll. A fresh seed
-  // (via the re-roll button) simulates a new request being sent.
-  let _rngState = (rngSeed==null ? (Math.random()*4294967296)>>>0 : (rngSeed>>>0));
-  const rng = () => {
-    _rngState |= 0; _rngState = (_rngState + 0x6D2B79F5) | 0;
-    let t = Math.imul(_rngState ^ (_rngState >>> 15), 1 | _rngState);
+// ==== RISU-ENGINE BEGIN (generated by tools/sync-risu.mjs; do not edit by hand) ====
+// Source: RisuAI by Kwaroran, https://github.com/kwaroran/RisuAI (GPL-3.0), commit e773240bfab72f3704f3efa52722ec7d105cdcf3
+const RisuEngine = (function (RisuHost) {
+const { get, DBState, selectedCharID, CurrentTriggerIdStore, getDatabase, getChatVar, setChatVar, getGlobalChatVar, getPersonaPrompt, getUserName, findCharacterbyId, getModules, getModuleLorebooks, getModelInfo, isTauri, isNodeServer, appVer, safeStructuredClone } = RisuHost;
+// src/ts/model/types.ts: LLMFlags
+const LLMFlags = {
+    hasImageInput: 0,
+    hasImageOutput: 1,
+    hasAudioInput: 2,
+    hasAudioOutput: 3,
+    hasPrefill: 4,
+    hasCache: 5,
+    hasFullSystemPrompt: 6,
+    hasFirstSystemPrompt: 7,
+    hasStreaming: 8,
+    requiresAlternateRole: 9,
+    mustStartWithUserInput: 10,
+    poolSupported: 11,
+    hasVideoInput: 12,
+    OAICompletionTokens: 13,
+    DeveloperRole: 14,
+    geminiThinking: 15,
+    geminiBlockOff: 16,
+    deepSeekPrefix: 17,
+    deepSeekThinkingInput: 18,
+    deepSeekThinkingOutput: 19,
+    noCivilIntegrity: 20,
+    claudeThinking: 21,
+    claudeAdaptiveThinking: 22,
+    claudeXHighEffort: 23,
+    deepSeekThinkingToggle: 24,
+    noStructuredOutput: 25,
+    geminiThinkingNoMinimal: 26,
+    claudeThinkingOnByDefault: 27
+};
+// src/ts/model/types.ts: LLMFormat
+const LLMFormat = {
+    OpenAICompatible: 0,
+    OpenAILegacyInstruct: 1,
+    Anthropic: 2,
+    AnthropicLegacy: 3,
+    Mistral: 4,
+    GoogleCloud: 5,
+    VertexAIGemini: 6,
+    NovelList: 7,
+    Cohere: 8,
+    NovelAI: 9,
+    WebLLM: 10,
+    OobaLegacy: 11,
+    Plugin: 12,
+    Ooba: 13,
+    Kobold: 14,
+    Ollama: 15,
+    Horde: 16,
+    AWSBedrockClaude: 17,
+    OpenAIResponseAPI: 18,
+    Echo: 19,
+    NanoGPT: 20,
+    NanoGPTResponses: 21,
+    NanoGPTMessages: 22,
+    NanoGPTLegacy: 23
+};
+// src/ts/util.ts: sfc32
+function sfc32(a, b, c, d) {
+    return function () {
+        a |= 0;
+        b |= 0;
+        c |= 0;
+        d |= 0;
+        let t = (a + b | 0) + d | 0;
+        d = d + 1 | 0;
+        a = b ^ b >>> 9;
+        b = c + (c << 3) | 0;
+        c = (c << 21 | c >>> 11);
+        c = c + t | 0;
+        return (t >>> 0) / 4294967296;
+    };
+}
+// src/ts/util.ts: pickHashRand
+function pickHashRand(cid, word) {
+    let hashAddress = 5515;
+    const rand = (word) => {
+        for (let counter = 0; counter < word.length; counter++) {
+            hashAddress = ((hashAddress << 5) + hashAddress) + word.charCodeAt(counter);
+        }
+        return hashAddress;
+    };
+    const randF = sfc32(rand(word), rand(word), rand(word), rand(word));
+    const v = cid % 1000;
+    for (let i = 0; i < v; i++) {
+        randF();
+    }
+    return randF();
+}
+// src/ts/util.ts: parseKeyValue
+function parseKeyValue(template) {
+    try {
+        if (!template) {
+            return [];
+        }
+        const keyValue = [];
+        for (const line of template.split('\n')) {
+            const [key, value] = line.split('=');
+            if (key && value) {
+                keyValue.push([key, value]);
+            }
+        }
+        return keyValue;
+    }
+    catch (error) {
+        return [];
+    }
+}
+// src/ts/process/infunctions.ts: toRPN
+function toRPN(expression) {
+    let outputQueue = '';
+    let operatorStack = [];
+    let operators = {
+        '+': { precedence: 2, associativity: 'Left' },
+        '-': { precedence: 2, associativity: 'Left' },
+        '*': { precedence: 3, associativity: 'Left' },
+        '/': { precedence: 3, associativity: 'Left' },
+        '^': { precedence: 4, associativity: 'Left' },
+        '%': { precedence: 3, associativity: 'Left' },
+        '<': { precedence: 1, associativity: 'Left' },
+        '>': { precedence: 1, associativity: 'Left' },
+        '|': { precedence: 1, associativity: 'Left' },
+        '&': { precedence: 1, associativity: 'Left' },
+        '≤': { precedence: 1, associativity: 'Left' },
+        '≥': { precedence: 1, associativity: 'Left' },
+        '=': { precedence: 1, associativity: 'Left' },
+        '≠': { precedence: 1, associativity: 'Left' },
+        '!': { precedence: 5, associativity: 'Right' },
+    };
+    const operatorsKeys = Object.keys(operators);
+    expression = expression.replace(/\s+/g, '');
+    let expression2 = [];
+    let lastToken = '';
+    for (let i = 0; i < expression.length; i++) {
+        const char = expression[i];
+        if (char === '-' && (i === 0 || operatorsKeys.includes(expression[i - 1]) || expression[i - 1] === '(')) {
+            lastToken += char;
+        }
+        else if (operatorsKeys.includes(char)) {
+            if (lastToken !== '') {
+                expression2.push(lastToken);
+            }
+            else {
+                expression2.push('0');
+            }
+            lastToken = '';
+            expression2.push(char);
+        }
+        else {
+            lastToken += char;
+        }
+    }
+    if (lastToken !== '') {
+        expression2.push(lastToken);
+    }
+    else {
+        expression2.push('0');
+    }
+    expression2.forEach(token => {
+        if (parseFloat(token) || token === '0') {
+            outputQueue += token + ' ';
+        }
+        else if (operatorsKeys.includes(token)) {
+            while (operatorStack.length > 0 &&
+                ((operators[token].associativity === 'Left' &&
+                    operators[token].precedence <= operators[operatorStack[operatorStack.length - 1]].precedence) ||
+                    (operators[token].associativity === 'Right' &&
+                        operators[token].precedence < operators[operatorStack[operatorStack.length - 1]].precedence))) {
+                outputQueue += operatorStack.pop() + ' ';
+            }
+            operatorStack.push(token);
+        }
+    });
+    while (operatorStack.length > 0) {
+        outputQueue += operatorStack.pop() + ' ';
+    }
+    return outputQueue.trim();
+}
+// src/ts/process/infunctions.ts: calculateRPN
+function calculateRPN(expression) {
+    let stack = [];
+    expression.split(' ').forEach(token => {
+        if (parseFloat(token) || token === '0') {
+            stack.push(parseFloat(token));
+        }
+        else {
+            let [b, a] = [stack.pop(), stack.pop()];
+            switch (token) {
+                case '+':
+                    stack.push(a + b);
+                    break;
+                case '-':
+                    stack.push(a - b);
+                    break;
+                case '*':
+                    stack.push(a * b);
+                    break;
+                case '/':
+                    stack.push(a / b);
+                    break;
+                case '^':
+                    stack.push(a ** b);
+                    break;
+                case '%':
+                    stack.push(a % b);
+                    break;
+                case '<':
+                    stack.push(a < b ? 1 : 0);
+                    break;
+                case '>':
+                    stack.push(a > b ? 1 : 0);
+                    break;
+                case '|':
+                    stack.push(a || b);
+                    break;
+                case '&':
+                    stack.push(a && b);
+                    break;
+                case '≤':
+                    stack.push(a <= b ? 1 : 0);
+                    break;
+                case '≥':
+                    stack.push(a >= b ? 1 : 0);
+                    break;
+                case '=':
+                    stack.push(a === b ? 1 : 0);
+                    break;
+                case '≠':
+                    stack.push(a !== b ? 1 : 0);
+                    break;
+                case '!':
+                    stack.push(b ? 0 : 1);
+                    break;
+            }
+        }
+    });
+    if (stack.length === 0) {
+        return 0;
+    }
+    return stack.pop();
+}
+// src/ts/process/infunctions.ts: executeRPNCalculation
+function executeRPNCalculation(text) {
+    text = text.replace(/\$([a-zA-Z0-9_]+)/g, (_, p1) => {
+        const v = getChatVar(p1);
+        const parsed = parseFloat(v);
+        if (isNaN(parsed)) {
+            return "0";
+        }
+        return parsed.toString();
+    }).replace(/\@([a-zA-Z0-9_]+)/g, (_, p1) => {
+        const v = getGlobalChatVar(p1);
+        const parsed = parseFloat(v);
+        if (isNaN(parsed)) {
+            return "0";
+        }
+        return parsed.toString();
+    })
+        .replace(/&&/g, '&')
+        .replace(/\|\|/g, '|')
+        .replace(/<=/g, '≤')
+        .replace(/>=/g, '≥')
+        .replace(/==/g, '=')
+        .replace(/!=/g, '≠')
+        .replace(/null/gi, '0');
+    const expression = toRPN(text);
+    const evaluated = calculateRPN(expression);
+    return evaluated;
+}
+// src/ts/process/infunctions.ts: calcString
+function calcString(text) {
+    let depthText = [''];
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === '(') {
+            depthText.push('');
+        }
+        else if (text[i] === ')' && depthText.length > 1) {
+            let result = executeRPNCalculation(depthText.pop());
+            depthText[depthText.length - 1] += result;
+        }
+        else {
+            depthText[depthText.length - 1] += text[i];
+        }
+    }
+    return executeRPNCalculation(depthText.join(''));
+}
+// src/ts/parser/parser.svelte.ts: replacements
+const replacements = [
+    '{', //0xE9B8
+    '}', //0xE9B9
+    '(', //0xE9BA
+    ')', //0xE9BB
+    '&lt;', //0xE9BC
+    '&gt;', //0xE9BD
+    ':', //0xE9BE
+    ';', //0xE9BF
+];
+// src/ts/parser/parser.svelte.ts: risuUnescape
+function risuUnescape(text) {
+    return text.replace(/[\uE9b8-\uE9bf]/g, (f) => {
+        const index = f.charCodeAt(0) - 0xE9B8;
+        return replacements[index];
+    });
+}
+// src/ts/parser/parser.svelte.ts: risuEscape
+function risuEscape(text) {
+    return text.replace(/[{}()]/g, (f) => {
+        switch (f) {
+            case '{': return '\uE9B8';
+            case '}': return '\uE9B9';
+            case '(': return '\uE9BA';
+            case ')': return '\uE9BB';
+            default: return f;
+        }
+    });
+}
+// src/ts/parser/parser.svelte.ts: matcherInitialized
+let matcherInitialized = false;
+// src/ts/parser/parser.svelte.ts: matcherMap
+const matcherMap = new Map();
+// src/ts/parser/parser.svelte.ts: initMatcher
+function initMatcher() {
+    if (matcherInitialized)
+        return;
+    registerCBS({
+        registerFunction: function (arg) {
+            const callback = arg.callback;
+            if (callback === 'doc_only') {
+                return;
+            }
+            const names = [arg.name, ...arg.alias];
+            for (const name of names) {
+                matcherMap.set(name, callback);
+            }
+        },
+        getDatabase: getDatabase,
+        getUserName: getUserName,
+        getPersonaPrompt: getPersonaPrompt,
+        risuChatParser: risuChatParser,
+        makeArray: makeArray,
+        safeStructuredClone: safeStructuredClone,
+        parseArray: parseArray,
+        parseDict: parseDict,
+        getChatVar: getChatVar,
+        setChatVar: setChatVar,
+        getGlobalChatVar: getGlobalChatVar,
+        calcString: calcString,
+        dateTimeFormat: dateTimeFormat,
+        getModules: getModules,
+        getModuleLorebooks: getModuleLorebooks,
+        pickHashRand: pickHashRand,
+        getSelectedCharID: () => {
+            return get(selectedCharID);
+        },
+        getModelInfo: getModelInfo,
+        callInternalFunction: function (args) {
+            return '';
+        },
+        isTauri: isTauri,
+        isNodeServer: isNodeServer,
+        isMobile: false,
+        appVer: appVer,
+    });
+    matcherInitialized = true;
+}
+// src/ts/parser/parser.svelte.ts: matcher
+function matcher(p1, matcherArg, vars = null) {
+    initMatcher();
+    try {
+        if (p1.startsWith('? ')) {
+            const substring = p1.substring(2);
+            return calcString(substring).toString();
+        }
+        const colonIndex = p1.indexOf(':');
+        let splited;
+        if (colonIndex !== -1 && p1[colonIndex + 1] === ':') {
+            splited = p1.split('::');
+        }
+        else {
+            splited = p1.split(':');
+        }
+        const name = splited[0].toLocaleLowerCase().replace(/[\s_-]/g, '');
+        const args = splited.slice(1);
+        const callback = matcherMap.get(name);
+        if (callback) {
+            return callback(p1, matcherArg, args, vars);
+        }
+    }
+    catch (error) { }
+    return null;
+}
+// src/ts/parser/parser.svelte.ts: dateTimeFormat
+const dateTimeFormat = (main, time = 0) => {
+    const date = time === 0 ? (new Date()) : (new Date(time));
+    if (!main) {
+        return '';
+    }
+    if (main.startsWith(':')) {
+        main = main.substring(1);
+    }
+    if (main.length > 300) {
+        return '';
+    }
+    return main
+        .replace(/YYYY/g, date.getFullYear().toString())
+        .replace(/YY/g, date.getFullYear().toString().substring(2))
+        .replace(/MMMM/g, Intl.DateTimeFormat('en', { month: 'long' }).format(date))
+        .replace(/MMM/g, Intl.DateTimeFormat('en', { month: 'short' }).format(date))
+        .replace(/MM/g, (date.getMonth() + 1).toString().padStart(2, '0'))
+        .replace(/DDDD/g, Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)).toString())
+        .replace(/DD/g, date.getDate().toString().padStart(2, '0'))
+        .replace(/dddd/g, Intl.DateTimeFormat('en', { weekday: 'long' }).format(date))
+        .replace(/ddd/g, Intl.DateTimeFormat('en', { weekday: 'short' }).format(date))
+        .replace(/HH/g, date.getHours().toString().padStart(2, '0'))
+        .replace(/hh/g, (date.getHours() % 12 || 12).toString().padStart(2, '0'))
+        .replace(/mm/g, date.getMinutes().toString().padStart(2, '0'))
+        .replace(/ss/g, date.getSeconds().toString().padStart(2, '0'))
+        .replace(/X/g, Math.floor(date.getTime() / 1000).toString())
+        .replace(/x/g, date.getTime().toString())
+        .replace(/A/g, date.getHours() >= 12 ? 'PM' : 'AM');
+};
+// src/ts/parser/parser.svelte.ts: legacyBlockMatcher
+const legacyBlockMatcher = (p1, matcherArg) => {
+    const bn = p1.indexOf('\n');
+    if (bn === -1) {
+        return null;
+    }
+    const logic = p1.substring(0, bn);
+    const content = p1.substring(bn + 1);
+    const statement = logic.split(" ", 2);
+    switch (statement[0]) {
+        case 'if': {
+            if (["", "0", "-1"].includes(statement[1])) {
+                return '';
+            }
+            return content.trim();
+        }
+    }
+    return null;
+};
+// src/ts/parser/parser.svelte.ts: parseArray
+function parseArray(p1) {
+    try {
+        const arr = JSON.parse(p1);
+        if (Array.isArray(arr)) {
+            return arr;
+        }
+        return p1.split('§');
+    }
+    catch (error) {
+        return p1.split('§');
+    }
+}
+// src/ts/parser/parser.svelte.ts: parseDict
+function parseDict(p1) {
+    try {
+        return JSON.parse(p1);
+    }
+    catch (error) {
+        return {};
+    }
+}
+// src/ts/parser/parser.svelte.ts: makeArray
+function makeArray(p1) {
+    return JSON.stringify(p1.map((f) => {
+        if (typeof (f) === 'string') {
+            return f.replace(/::/g, '\\u003A\\u003A');
+        }
+        return f;
+    }));
+}
+// src/ts/parser/parser.svelte.ts: blockStartMatcher
+function blockStartMatcher(p1, matcherArg) {
+    if (p1.startsWith('#if') || p1.startsWith('#if_pure ')) {
+        const statement = p1.split(' ', 2);
+        const state = statement[1];
+        if (state === 'true' || state === '1') {
+            return {
+                type: p1.startsWith('#if_pure') ? 'ifpure' :
+                    'parse'
+            };
+        }
+        return { type: 'ignore' };
+    }
+    if (p1.startsWith('#when')) {
+        if (p1.startsWith('#when ')) {
+            const statement = p1.split(' ', 2);
+            const state = statement[1];
+            return { type: (state === 'true' || state === '1') ? 'newif' : 'newif-falsy' };
+        }
+        else if (p1.startsWith('#when::')) {
+            const statement = p1.split('::').slice(1);
+            if (statement.length === 1) {
+                const state = statement[0];
+                return { type: (state === 'true' || state === '1') ? 'newif' : 'newif-falsy' };
+            }
+            let mode = 'normal';
+            const isTruthy = (s) => {
+                return s === 'true' || s === '1';
+            };
+            while (statement.length > 1) {
+                const condition = statement.pop();
+                const operator = statement.pop();
+                switch (operator) {
+                    case 'not': {
+                        if (isTruthy(condition)) {
+                            statement.push('0');
+                        }
+                        else {
+                            statement.push('1');
+                        }
+                        break;
+                    }
+                    case 'keep': {
+                        mode = 'keep';
+                        statement.push(condition);
+                        break;
+                    }
+                    case 'legacy': {
+                        mode = 'legacy';
+                        statement.push(condition);
+                        break;
+                    }
+                    case 'and': {
+                        const condition2 = statement.pop();
+                        if (isTruthy(condition) && isTruthy(condition2)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'or': {
+                        const condition2 = statement.pop();
+                        if (isTruthy(condition) || isTruthy(condition2)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'is': {
+                        const condition2 = statement.pop();
+                        if (condition === condition2) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'isnot': {
+                        const condition2 = statement.pop();
+                        if (condition !== condition2) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'var': {
+                        const variable = getChatVar(condition);
+                        if (isTruthy(variable)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'toggle': {
+                        const variable = getGlobalChatVar('toggle_' + condition);
+                        if (isTruthy(variable)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'vis': { //vis = variable is
+                        const variable = getChatVar(statement.pop());
+                        if (variable === condition) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'visnot': { //visnot = variable is not
+                        const variable = getChatVar(statement.pop());
+                        if (variable !== condition) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'tis': { //tis = toggle is
+                        const variable = getGlobalChatVar('toggle_' + statement.pop());
+                        if (variable === condition) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case 'tisnot': { //tisnot = toggle is not
+                        const variable = getGlobalChatVar('toggle_' + statement.pop());
+                        if (variable !== condition) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case '>': {
+                        const condition2 = statement.pop();
+                        if (parseFloat(condition2) > parseFloat(condition)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case '<': {
+                        const condition2 = statement.pop();
+                        if (parseFloat(condition2) < parseFloat(condition)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case '>=': {
+                        const condition2 = statement.pop();
+                        if (parseFloat(condition2) >= parseFloat(condition)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    case '<=': {
+                        const condition2 = statement.pop();
+                        if (parseFloat(condition2) <= parseFloat(condition)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                    default: {
+                        if (isTruthy(condition)) {
+                            statement.push('1');
+                        }
+                        else {
+                            statement.push('0');
+                        }
+                        break;
+                    }
+                }
+            }
+            const finalCondition = statement[0];
+            if (isTruthy(finalCondition)) {
+                switch (mode) {
+                    case 'keep': {
+                        return { type: 'newif', type2: 'keep' };
+                    }
+                    case 'legacy': {
+                        return { type: 'parse' };
+                    }
+                    default: {
+                        return { type: 'newif' };
+                    }
+                }
+            }
+            else {
+                switch (mode) {
+                    case 'keep': {
+                        return { type: 'newif-falsy', type2: 'keep' };
+                    }
+                    case 'legacy': {
+                        return { type: 'ignore' };
+                    }
+                    default: {
+                        return { type: 'newif-falsy' };
+                    }
+                }
+            }
+        }
+        else {
+            return { type: 'newif-falsy' };
+        }
+    }
+    if (p1 === '#pure') {
+        return { type: 'pure' };
+    }
+    if (p1 === '#pure_display' || p1 === '#puredisplay') {
+        return { type: 'pure-display' };
+    }
+    if (p1 === '#code') {
+        return { type: 'normalize' };
+    }
+    if (p1.startsWith('#escape')) {
+        const t2 = p1.substring(7).trim();
+        const mode = t2 === '::keep' ? 'keep' : undefined;
+        return { type: 'escape', mode };
+    }
+    if (p1.startsWith('#each')) {
+        let t2 = p1.substring(5).trim();
+        let mode;
+        if (t2.startsWith('::keep ')) {
+            mode = 'keep';
+            t2 = t2.substring(7).trim();
+        }
+        if (t2.startsWith('as ')) {
+            t2 = t2.substring(3).trim();
+        }
+        return { type: 'each', type2: t2, mode };
+    }
+    if (p1.startsWith('#func')) {
+        const statement = p1.split(' ');
+        if (statement.length > 1) {
+            return { type: 'function', funcArg: statement.slice(1) };
+        }
+    }
+    return { type: 'nothing' };
+}
+// src/ts/parser/parser.svelte.ts: trimLines
+function trimLines(p1) {
+    return p1.split('\n').map((v) => {
+        return v.trimStart();
+    }).join('\n').trim();
+}
+// src/ts/parser/parser.svelte.ts: blockEndMatcher
+function blockEndMatcher(p1, type, matcherArg) {
+    const p1Trimmed = p1.trim();
+    switch (type.type) {
+        case 'pure':
+        case 'pure-display':
+        case 'function': {
+            return p1Trimmed;
+        }
+        case 'parse': {
+            return trimLines(p1Trimmed);
+        }
+        case 'each': {
+            if (type.mode === 'keep') {
+                return p1;
+            }
+            return trimLines(p1Trimmed);
+        }
+        case 'ifpure': {
+            return p1;
+        }
+        case 'newif':
+        case 'newif-falsy': {
+            const lines = p1.split("\n");
+            if (lines.length === 1) {
+                const elseIndex = p1.indexOf('{{:else}}');
+                if (elseIndex !== -1) {
+                    if (type.type === 'newif') {
+                        return p1.substring(0, elseIndex);
+                    }
+                    if (type.type === 'newif-falsy') {
+                        return p1.substring(elseIndex + 9);
+                    }
+                }
+                else {
+                    if (type.type === 'newif') {
+                        return p1;
+                    }
+                    if (type.type === 'newif-falsy') {
+                        return '';
+                    }
+                }
+            }
+            const elseLine = lines.findIndex((v) => {
+                return v.trim() === '{{:else}}';
+            });
+            if (elseLine !== -1 && type.type === 'newif') {
+                lines.splice(elseLine); //else line and everything after it is removed
+            }
+            if (elseLine !== -1 && type.type === 'newif-falsy') {
+                lines.splice(0, elseLine + 1); //everything before else line is removed
+            }
+            if (elseLine === -1 && type.type === 'newif-falsy') {
+                return '';
+            }
+            if (type.type2 !== 'keep') {
+                while (lines.length > 0 && lines[0].trim() === '') {
+                    lines.shift();
+                }
+                while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+                    lines.pop();
+                }
+            }
+            return lines.join('\n');
+        }
+        case 'normalize': {
+            return p1Trimmed.trim().replaceAll('\n', '').replaceAll('\t', '')
+                .replaceAll(/\\u([0-9A-Fa-f]{4})/g, (match, p1) => {
+                return String.fromCharCode(parseInt(p1, 16));
+            })
+                .replaceAll(/\\(.)/g, (match, p1) => {
+                switch (p1) {
+                    case 'n':
+                        return '\n';
+                    case 'r':
+                        return '\r';
+                    case 't':
+                        return '\t';
+                    case 'b':
+                        return '\b';
+                    case 'f':
+                        return '\f';
+                    case 'v':
+                        return '\v';
+                    case 'a':
+                        return '\a';
+                    case 'x':
+                        return '\x00';
+                    default:
+                        return p1;
+                }
+            });
+        }
+        case 'escape': {
+            return risuEscape(type.mode === 'keep' ? p1 : p1Trimmed);
+        }
+        default: {
+            return '';
+        }
+    }
+}
+// src/ts/parser/parser.svelte.ts: risuChatParser
+function risuChatParser(da, arg = {}) {
+    const chatID = arg.chatID ?? -1;
+    const db = arg.db ?? DBState.db;
+    const aChara = arg.chara;
+    let chara = null;
+    if (aChara) {
+        if (typeof (aChara) !== 'string' && aChara.type === 'group') {
+            if (aChara.chats[aChara.chatPage].message.length > 0) {
+                const gc = findCharacterbyId(aChara.chats[aChara.chatPage].message.at(-1).saying ?? '');
+                if (gc.name !== 'Unknown Character') {
+                    chara = gc;
+                }
+            }
+            else {
+                chara = 'bot';
+            }
+        }
+        else {
+            chara = aChara;
+        }
+    }
+    if (arg.tokenizeAccurate) {
+        const db = arg.db ?? DBState.db;
+        const selchar = chara ?? db.characters[get(selectedCharID)];
+        if (!selchar) {
+            chara = 'bot';
+        }
+    }
+    let pointer = 0;
+    let nested = [""];
+    let stackType = new Uint8Array(512);
+    let pureModeNest = new Map();
+    let pureModeNestType = new Map();
+    let blockNestType = new Map();
+    let commentMode = false;
+    let commentLatest = [""];
+    let commentV = new Uint8Array(512);
+    let thinkingMode = false;
+    let tempVar = {};
+    let functions = arg.functions ?? (new Map());
+    arg.callStack = (arg.callStack ?? 0) + 1;
+    if (arg.callStack > 20) {
+        return 'ERROR: Call stack limit reached';
+    }
+    const matcherObj = {
+        chatID: chatID,
+        chara: chara,
+        rmVar: arg.rmVar ?? false,
+        db: db,
+        var: arg.var ?? null,
+        tokenizeAccurate: arg.tokenizeAccurate ?? false,
+        displaying: arg.visualize ?? false,
+        role: arg.role,
+        runVar: arg.runVar ?? false,
+        consistantChar: arg.consistantChar ?? false,
+        cbsConditions: arg.cbsConditions ?? {},
+        callStack: arg.callStack,
+        getNested: () => {
+            return nested;
+        },
+        setNestedRoot: (val) => {
+            nested[0] = val;
+        }
+    };
+    da = da.replace(/\<(user|char|bot)\>/gi, '{{$1}}');
+    const isPureMode = () => {
+        return pureModeNest.size > 0;
+    };
+    while (pointer < da.length) {
+        switch (da[pointer]) {
+            case '{': {
+                if (da[pointer + 1] !== '{' && da[pointer + 1] !== '#') {
+                    nested[0] += da[pointer];
+                    break;
+                }
+                pointer++;
+                nested.unshift('');
+                stackType[nested.length] = 1;
+                break;
+            }
+            case '#': {
+                //legacy if statement, deprecated
+                if (da[pointer + 1] !== '}' || nested.length === 1 || stackType[nested.length] !== 1) {
+                    nested[0] += da[pointer];
+                    break;
+                }
+                pointer++;
+                const dat = nested.shift();
+                const mc = legacyBlockMatcher(dat, matcherObj);
+                nested[0] += mc ?? `{#${dat}#}`;
+                break;
+            }
+            case '}': {
+                if (da[pointer + 1] !== '}' || nested.length === 1 || stackType[nested.length] !== 1) {
+                    nested[0] += da[pointer];
+                    break;
+                }
+                pointer++;
+                const dat = nested.shift();
+                if (dat.startsWith('#') || dat.startsWith(':')) {
+                    if (isPureMode()) {
+                        nested[0] += `{{${dat}}}`;
+                        if (dat !== ':else') {
+                            nested.unshift('');
+                            stackType[nested.length] = 6;
+                        }
+                        break;
+                    }
+                    const matchResult = blockStartMatcher(dat, matcherObj);
+                    if (matchResult.type === 'nothing') {
+                        nested[0] += `{{${dat}}}`;
+                        break;
+                    }
+                    else {
+                        nested.unshift('');
+                        stackType[nested.length] = 5;
+                        blockNestType.set(nested.length, matchResult);
+                        if (matchResult.type === 'ignore' || matchResult.type === 'pure' ||
+                            matchResult.type === 'each' || matchResult.type === 'function' ||
+                            matchResult.type === 'pure-display' || matchResult.type === 'escape') {
+                            pureModeNest.set(nested.length, true);
+                            pureModeNestType.set(nested.length, "block");
+                        }
+                        break;
+                    }
+                }
+                if (dat.startsWith('/') && !dat.startsWith('//')) {
+                    if (stackType[nested.length] === 5) {
+                        const blockType = blockNestType.get(nested.length);
+                        if (blockType.type === 'ignore' || blockType.type === 'pure' ||
+                            blockType.type === 'each' || blockType.type === 'function' ||
+                            blockType.type === 'pure-display' || blockType.type === 'escape') {
+                            pureModeNest.delete(nested.length);
+                            pureModeNestType.delete(nested.length);
+                        }
+                        blockNestType.delete(nested.length);
+                        const dat2 = nested.shift();
+                        const matchResult = blockEndMatcher(dat2, blockType, matcherObj);
+                        if (blockType.type === 'each') {
+                            const asIndex = blockType.type2.lastIndexOf(' as ');
+                            let sub = blockType.type2.substring(asIndex + 4).trim();
+                            let array = parseArray(blockType.type2.substring(0, asIndex));
+                            if (asIndex === -1) {
+                                //compability mode
+                                const subind = blockType.type2.lastIndexOf(' ');
+                                if (subind === -1) {
+                                    break;
+                                }
+                                sub = blockType.type2.substring(subind + 1);
+                                array = parseArray(blockType.type2.substring(0, subind));
+                            }
+                            let added = '';
+                            for (let i = 0; i < array.length; i++) {
+                                added += matchResult.replaceAll(`{{slot::${sub}}}`, typeof (array[i]) === 'string' ? array[i] : JSON.stringify(array[i]));
+                            }
+                            da = da.substring(0, pointer + 1) + (blockType.mode === 'keep' ? added : added.trim()) + da.substring(pointer + 1);
+                            break;
+                        }
+                        if (blockType.type === 'function') {
+                            console.log(matchResult);
+                            functions.set(blockType.funcArg[0], {
+                                data: matchResult,
+                                arg: blockType.funcArg.slice(1)
+                            });
+                            break;
+                        }
+                        if (blockType.type === 'pure-display') {
+                            nested[0] += matchResult.replaceAll('{{', '\\{\\{').replaceAll('}}', '\\}\\}');
+                            break;
+                        }
+                        if (matchResult === '') {
+                            break;
+                        }
+                        nested[0] += matchResult;
+                        break;
+                    }
+                    if (stackType[nested.length] === 6) {
+                        const sft = nested.shift();
+                        nested[0] += sft + `{{${dat}}}`;
+                        break;
+                    }
+                }
+                if (dat.startsWith('call::')) {
+                    if (arg.callStack && arg.callStack > 20) {
+                        nested[0] += `ERROR: Call stack limit reached`;
+                        break;
+                    }
+                    const argData = dat.split('::').slice(1);
+                    const funcName = argData[0];
+                    const func = functions.get(funcName);
+                    console.log(func);
+                    if (func) {
+                        let data = func.data;
+                        for (let i = 0; i < argData.length; i++) {
+                            data = data.replaceAll(`{{arg::${i}}}`, argData[i]);
+                        }
+                        arg.functions = functions;
+                        nested[0] += risuChatParser(data, arg);
+                        break;
+                    }
+                }
+                const mc = isPureMode() ? null : matcher(dat, matcherObj, tempVar);
+                if (!mc && mc !== '') {
+                    nested[0] += `{{${dat}}}`;
+                }
+                else if (typeof (mc) === 'string') {
+                    nested[0] += mc;
+                }
+                else {
+                    nested[0] += mc.text;
+                    tempVar = mc.var;
+                    if (tempVar['__force_return__']) {
+                        return tempVar['__return__'] ?? 'null';
+                    }
+                }
+                break;
+            }
+            default: {
+                nested[0] += da[pointer];
+                break;
+            }
+        }
+        pointer++;
+    }
+    if (commentMode) {
+        nested = commentLatest;
+        stackType = commentV;
+        if (thinkingMode) {
+            nested[0] += `<div>Thinking...</div>`;
+        }
+        commentMode = false;
+    }
+    if (nested.length === 1) {
+        return nested[0];
+    }
+    let result = '';
+    while (nested.length > 1) {
+        let dat = (stackType[nested.length] === 1) ? '{{' : "<";
+        dat += nested.shift();
+        result = dat + result;
+    }
+    return nested[0] + result;
+}
+// src/ts/cbs.ts: registerCBS
+function registerCBS(arg) {
+    const { registerFunction, getDatabase, getUserName, getPersonaPrompt, risuChatParser, makeArray, safeStructuredClone, parseArray, parseDict, getChatVar, setChatVar, getGlobalChatVar, calcString, dateTimeFormat, getModules, getModuleLorebooks, pickHashRand, getSelectedCharID, isTauri, isNodeServer, isMobile, appVer, getModelInfo, callInternalFunction } = arg;
+    // Basic character/user variables
+    registerFunction({
+        name: 'char',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.consistantChar) {
+                return 'botname';
+            }
+            const db = getDatabase();
+            let selectedChar = getSelectedCharID();
+            let currentChar = db.characters[selectedChar];
+            if (currentChar && currentChar.type !== 'group') {
+                return currentChar.nickname || currentChar.name;
+            }
+            if (matcherArg.chara) {
+                if (typeof (matcherArg.chara) === 'string') {
+                    return matcherArg.chara;
+                }
+                else {
+                    return matcherArg.chara.name;
+                }
+            }
+            return currentChar.nickname || currentChar.name;
+        },
+        alias: ['bot'],
+        description: "",
+    });
+    registerFunction({
+        name: 'user',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.consistantChar) {
+                return 'username';
+            }
+            return getUserName();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'trigger_id',
+        callback: (str, matcherArg, args, vars) => {
+            const currentTriggerId = get(CurrentTriggerIdStore);
+            return currentTriggerId ?? 'null';
+        },
+        alias: ['triggerid'],
+        description: "",
+    });
+    registerFunction({
+        name: 'previouscharchat',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            let pointer = matcherArg.chatID !== -1 ? matcherArg.chatID - 1 : chat.message.length - 1;
+            while (pointer >= 0) {
+                if (chat.message[pointer].role === 'char') {
+                    return chat.message[pointer].data;
+                }
+                pointer--;
+            }
+            return chat.fmIndex === -1 ? selchar.firstMessage : selchar.alternateGreetings[chat.fmIndex];
+        },
+        alias: ['previouscharchat', 'lastcharmessage'],
+        description: "",
+    });
+    registerFunction({
+        name: 'previoususerchat',
+        callback: (str, matcherArg, args, vars) => {
+            const chatID = matcherArg.chatID;
+            if (chatID !== -1) {
+                const db = getDatabase();
+                const selchar = db.characters[getSelectedCharID()];
+                const chat = selchar.chats[selchar.chatPage];
+                let pointer = chatID - 1;
+                while (pointer >= 0) {
+                    if (chat.message[pointer].role === 'user') {
+                        return chat.message[pointer].data;
+                    }
+                    pointer--;
+                }
+                return chat.fmIndex === -1 ? selchar.firstMessage : selchar.alternateGreetings[chat.fmIndex];
+            }
+            return '';
+        },
+        alias: ['previoususerchat', 'lastusermessage'],
+        description: "",
+    });
+    // Character data functions
+    registerFunction({
+        name: 'personality',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const argChara = matcherArg.chara;
+            const achara = (argChara && typeof (argChara) !== 'string') ? argChara : (db.characters[getSelectedCharID()]);
+            if (achara.type === 'group') {
+                return "";
+            }
+            return risuChatParser(achara.personality, matcherArg);
+        },
+        alias: ['charpersona'],
+        description: "",
+    });
+    registerFunction({
+        name: 'description',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const argChara = matcherArg.chara;
+            const achara = (argChara && typeof (argChara) !== 'string') ? argChara : (db.characters[getSelectedCharID()]);
+            if (achara.type === 'group') {
+                return "";
+            }
+            return risuChatParser(achara.desc, matcherArg);
+        },
+        alias: ['chardesc'],
+        description: "",
+    });
+    registerFunction({
+        name: 'scenario',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const argChara = matcherArg.chara;
+            const achara = (argChara && typeof (argChara) !== 'string') ? argChara : (db.characters[getSelectedCharID()]);
+            if (achara.type === 'group') {
+                return "";
+            }
+            return risuChatParser(achara.scenario, matcherArg);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'exampledialogue',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const argChara = matcherArg.chara;
+            const achara = (argChara && typeof (argChara) !== 'string') ? argChara : (db.characters[getSelectedCharID()]);
+            if (achara.type === 'group') {
+                return "";
+            }
+            return risuChatParser(achara.exampleMessage, matcherArg);
+        },
+        alias: ['examplemessage', 'example_dialogue'],
+        description: "",
+    });
+    // Prompt and system functions
+    registerFunction({
+        name: 'persona',
+        callback: (str, matcherArg, args, vars) => {
+            return risuChatParser(getPersonaPrompt(), matcherArg);
+        },
+        alias: ['userpersona'],
+        description: "",
+    });
+    registerFunction({
+        name: 'mainprompt',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            return risuChatParser(db.mainPrompt, matcherArg);
+        },
+        alias: ['systemprompt', 'main_prompt'],
+        description: "",
+    });
+    registerFunction({
+        name: 'lorebook',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const argChara = matcherArg.chara;
+            const achara = (argChara && typeof (argChara) !== 'string') ? argChara : (db.characters[getSelectedCharID()]);
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            const characterLore = (achara.type === 'group') ? [] : (achara.globalLore ?? []);
+            const chatLore = chat.localLore ?? [];
+            const fullLore = characterLore.concat(chatLore.concat(getModuleLorebooks()));
+            return makeArray(fullLore.map((v) => {
+                return JSON.stringify(v);
+            }));
+        },
+        alias: ['worldinfo'],
+        description: "",
+    });
+    registerFunction({
+        name: 'userhistory',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            return makeArray(chat.message.filter((v) => {
+                return v.role === 'user';
+            }).map((v) => {
+                v = safeStructuredClone(v);
+                v.data = risuChatParser(v.data, matcherArg);
+                return JSON.stringify(v);
+            }));
+        },
+        alias: ['usermessages', 'user_history'],
+        description: "",
+    });
+    registerFunction({
+        name: 'charhistory',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            return makeArray(chat.message.filter((v) => {
+                return v.role === 'char';
+            }).map((v) => {
+                v = safeStructuredClone(v);
+                v.data = risuChatParser(v.data, matcherArg);
+                return JSON.stringify(v);
+            }));
+        },
+        alias: ['charmessages', 'char_history'],
+        description: "",
+    });
+    registerFunction({
+        name: 'jb',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            return risuChatParser(db.jailbreak, matcherArg);
+        },
+        alias: ['jailbreak'],
+        description: "",
+    });
+    registerFunction({
+        name: 'globalnote',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            return risuChatParser(db.globalNote, matcherArg);
+        },
+        alias: ['globalnote', 'systemnote', 'ujb'],
+        description: "",
+    });
+    registerFunction({
+        name: 'authornote',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters?.[getSelectedCharID()];
+            const chat = selchar?.chats?.[selchar.chatPage];
+            if (chat?.note) {
+                return risuChatParser(chat.note, matcherArg);
+            }
+            const template = db.promptTemplate;
+            if (template) {
+                for (const v of template) {
+                    if (v.type === 'authornote' && v.defaultText) {
+                        return risuChatParser(v.defaultText, matcherArg);
+                    }
+                }
+            }
+            return '';
+        },
+        alias: ['author_note'],
+        description: "",
+    });
+    registerFunction({
+        name: 'chatindex',
+        callback: (str, matcherArg, args, vars) => {
+            return matcherArg.chatID.toString();
+        },
+        alias: ['chat_index'],
+        description: "",
+    });
+    registerFunction({
+        name: 'firstmsgindex',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            return chat.fmIndex.toString();
+        },
+        alias: ['firstmessageindex', 'first_msg_index'],
+        description: "",
+    });
+    registerFunction({
+        name: 'blank',
+        callback: (str, matcherArg, args, vars) => {
+            return '';
+        },
+        alias: ['none'],
+        description: "",
+    });
+    registerFunction({
+        name: 'messagetime',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.tokenizeAccurate) {
+                return `00:00:00`;
+            }
+            if (matcherArg.chatID === -1) {
+                return "[Cannot get time]";
+            }
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            const message = chat.message[matcherArg.chatID];
+            if (!message.time) {
+                return "[Cannot get time, message was sent in older version]";
+            }
+            const date = new Date(message.time);
+            return date.toLocaleTimeString();
+        },
+        alias: ['message_time'],
+        description: "",
+    });
+    registerFunction({
+        name: 'messagedate',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.tokenizeAccurate) {
+                return `00:00:00`;
+            }
+            if (matcherArg.chatID === -1) {
+                return "[Cannot get time]";
+            }
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            const message = chat.message[matcherArg.chatID];
+            if (!message.time) {
+                return "[Cannot get time, message was sent in older version]";
+            }
+            const date = new Date(message.time);
+            return date.toLocaleDateString();
+        },
+        alias: ['message_date'],
+        description: "",
+    });
+    registerFunction({
+        name: 'messageunixtimearray',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            return makeArray(chat.message.map((f) => {
+                return `${f.time ?? 0}`;
+            }));
+        },
+        alias: ['message_unixtime_array'],
+        description: "",
+    });
+    registerFunction({
+        name: 'unixtime',
+        callback: (str, matcherArg, args, vars) => {
+            const now = new Date();
+            return (now.getTime() / 1000).toFixed(0);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'time',
+        callback: (str, matcherArg, args, vars) => {
+            const now = new Date();
+            return `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'isotime',
+        callback: (str, matcherArg, args, vars) => {
+            const now = new Date();
+            return `${now.getUTCHours()}:${now.getUTCMinutes()}:${now.getUTCSeconds()}`;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'isodate',
+        callback: (str, matcherArg, args, vars) => {
+            const now = new Date();
+            return `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
+        },
+        alias: [],
+        description: "",
+    });
+    // Continue with remaining utility functions
+    registerFunction({
+        name: 'messageidleduration',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.tokenizeAccurate) {
+                return `00:00:00`;
+            }
+            if (matcherArg.chatID === -1) {
+                return "[Cannot get time]";
+            }
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            let pointer = matcherArg.chatID;
+            let pointerMode = 'findLast';
+            let message;
+            let previous_message;
+            while (pointer >= 0) {
+                if (chat.message[pointer].role === 'user') {
+                    if (pointerMode === 'findLast') {
+                        message = chat.message[pointer];
+                        pointerMode = 'findSecondLast';
+                    }
+                    else {
+                        previous_message = chat.message[pointer];
+                        break;
+                    }
+                }
+                pointer--;
+            }
+            if (!message) {
+                return '[No user message found]';
+            }
+            if (!previous_message) {
+                return '[No previous user message found]';
+            }
+            if (!message.time) {
+                return "[Cannot get time, message was sent in older version]";
+            }
+            if (!previous_message.time) {
+                return "[Cannot get time, previous message was sent in older version]";
+            }
+            let duration = message.time - previous_message.time;
+            let seconds = Math.floor(duration / 1000);
+            let minutes = Math.floor(seconds / 60);
+            let hours = Math.floor(minutes / 60);
+            seconds = seconds % 60;
+            minutes = minutes % 60;
+            return hours.toString() + ':' + minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
+        },
+        alias: ['message_idle_duration'],
+        description: "",
+    });
+    registerFunction({
+        name: 'idleduration',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.tokenizeAccurate) {
+                return `00:00:00`;
+            }
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            const messages = chat.message;
+            if (messages.length === 0) {
+                return `00:00:00`;
+            }
+            const lastMessage = messages[messages.length - 1];
+            if (!lastMessage.time) {
+                return "[Cannot get time, message was sent in older version]";
+            }
+            const now = new Date();
+            let duration = now.getTime() - lastMessage.time;
+            let seconds = Math.floor(duration / 1000);
+            let minutes = Math.floor(seconds / 60);
+            let hours = Math.floor(minutes / 60);
+            seconds = seconds % 60;
+            minutes = minutes % 60;
+            return hours.toString() + ':' + minutes.toString().padStart(2, '0') + ':' + seconds.toString().padStart(2, '0');
+        },
+        alias: ['idle_duration'],
+        description: "",
+    });
+    registerFunction({
+        name: 'br',
+        callback: (str, matcherArg, args, vars) => {
+            return '\n';
+        },
+        alias: ['newline'],
+        description: "",
+    });
+    registerFunction({
+        name: 'model',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            return db.aiModel;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'axmodel',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            return db.subModel;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'role',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.cbsConditions.chatRole) {
+                return matcherArg.cbsConditions.chatRole;
+            }
+            if (matcherArg.cbsConditions.firstmsg) {
+                return 'char';
+            }
+            if (matcherArg.chatID !== -1) {
+                const db = getDatabase();
+                const selchar = db.characters[getSelectedCharID()];
+                return selchar.chats[selchar.chatPage].message[matcherArg.chatID].role;
+            }
+            return matcherArg.role ?? 'null';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'isfirstmsg',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.cbsConditions.firstmsg) {
+                return '1';
+            }
+            return '0';
+        },
+        alias: ['isfirstmsg', 'isfirstmessage'],
+        description: "",
+    });
+    registerFunction({
+        name: 'jbtoggled',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            return db.jailbreakToggle ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'maxcontext',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            return db.maxContext.toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'lastmessage',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            if (!selchar) {
+                return '';
+            }
+            const chat = selchar.chats[selchar.chatPage];
+            return chat.message[chat.message.length - 1].data;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'lastmessageid',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            if (!selchar) {
+                return '';
+            }
+            const chat = selchar.chats[selchar.chatPage];
+            return (chat.message.length - 1).toString();
+        },
+        alias: ['lastmessageindex'],
+        description: "",
+    });
+    // Variable handling functions
+    registerFunction({
+        name: 'tempvar',
+        callback: (str, matcherArg, args, vars) => {
+            return {
+                text: vars[args[0]] ?? '',
+                var: vars
+            };
+        },
+        alias: ['gettempvar'],
+        description: "",
+    });
+    registerFunction({
+        name: 'settempvar',
+        callback: (str, matcherArg, args, vars) => {
+            vars[args[0]] = args[1];
+            return {
+                text: '',
+                var: vars
+            };
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'return',
+        callback: (str, matcherArg, args, vars) => {
+            vars['__return__'] = args[0];
+            vars['__force_return__'] = '1';
+            return {
+                text: '',
+                var: vars
+            };
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'getvar',
+        callback: (str, matcherArg, args, vars) => {
+            return getChatVar(args[0]);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'calc',
+        callback: (str, matcherArg, args, vars) => {
+            return calcString(args[0]).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'addvar',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.rmVar) {
+                return '';
+            }
+            if (matcherArg.runVar) {
+                setChatVar(args[0], (Number(getChatVar(args[0])) + Number(args[1])).toString());
+                return '';
+            }
+            return null;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'setvar',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.rmVar) {
+                return '';
+            }
+            if (matcherArg.runVar) {
+                setChatVar(args[0], args[1]);
+                return '';
+            }
+            return null;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'setdefaultvar',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.rmVar) {
+                return '';
+            }
+            if (matcherArg.runVar) {
+                const currentValue = getChatVar(args[0]);
+                if (!currentValue || currentValue === 'null') {
+                    setChatVar(args[0], args[1]);
+                }
+                return '';
+            }
+            return null;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'getglobalvar',
+        callback: (str, matcherArg, args, vars) => {
+            return getGlobalChatVar(args[0]);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'button',
+        callback: (str, matcherArg, args, vars) => {
+            return `<button class="button-default" risu-trigger="${args[1]}">${args[0]}</button>`;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'risu',
+        callback: (str, matcherArg, args, vars) => {
+            const size = args[0] || '45';
+            return `<img src="/logo2.png" style="height:${size}px;width:${size}px" />`;
+        },
+        alias: [],
+        description: "",
+    });
+    // Comparison functions
+    registerFunction({
+        name: 'equal',
+        callback: (str, matcherArg, args, vars) => {
+            return (args[0] === args[1]) ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'notequal',
+        callback: (str, matcherArg, args, vars) => {
+            return (args[0] !== args[1]) ? '1' : '0';
+        },
+        alias: ['not_equal'],
+        description: "",
+    });
+    registerFunction({
+        name: 'greater',
+        callback: (str, matcherArg, args, vars) => {
+            return (Number(args[0]) > Number(args[1])) ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'less',
+        callback: (str, matcherArg, args, vars) => {
+            return (Number(args[0]) < Number(args[1])) ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'greaterequal',
+        callback: (str, matcherArg, args, vars) => {
+            return (Number(args[0]) >= Number(args[1])) ? '1' : '0';
+        },
+        alias: ['greater_equal'],
+        description: "",
+    });
+    registerFunction({
+        name: 'lessequal',
+        callback: (str, matcherArg, args, vars) => {
+            return (Number(args[0]) <= Number(args[1])) ? '1' : '0';
+        },
+        alias: ['less_equal'],
+        description: "",
+    });
+    registerFunction({
+        name: 'and',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0] === '1' && args[1] === '1' ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'or',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0] === '1' || args[1] === '1' ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'not',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0] === '1' ? '0' : '1';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'file',
+        callback: (str, matcherArg, args, vars) => {
+            if (matcherArg.displaying) {
+                return `<br><div class="risu-file">${args[0]}</div><br>`;
+            }
+            return Buffer.from(args[1], 'base64').toString('utf-8');
+        },
+        alias: [],
+        description: "",
+    });
+    // String manipulation functions
+    registerFunction({
+        name: 'startswith',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].startsWith(args[1]) ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'endswith',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].endsWith(args[1]) ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'contains',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].includes(args[1]) ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'replace',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].replaceAll(args[1], args[2]);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'split',
+        callback: (str, matcherArg, args, vars) => {
+            return makeArray(args[0].split(args[1]));
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'join',
+        callback: (str, matcherArg, args, vars) => {
+            return (parseArray(args[0])).join(args[1]);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'spread',
+        callback: (str, matcherArg, args, vars) => {
+            return (parseArray(args[0])).join('::');
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'trim',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].trim();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'length',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].length.toString();
+        },
+        alias: [],
+        description: "",
+    });
+    // Array/Object manipulation functions
+    registerFunction({
+        name: 'arraylength',
+        callback: (str, matcherArg, args, vars) => {
+            return parseArray(args[0]).length.toString();
+        },
+        alias: ['arraylength'],
+        description: "",
+    });
+    registerFunction({
+        name: 'lower',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].toLocaleLowerCase();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'upper',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].toLocaleUpperCase();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'capitalize',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].charAt(0).toUpperCase() + args[0].slice(1);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'round',
+        callback: (str, matcherArg, args, vars) => {
+            return Math.round(Number(args[0])).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'floor',
+        callback: (str, matcherArg, args, vars) => {
+            return Math.floor(Number(args[0])).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'ceil',
+        callback: (str, matcherArg, args, vars) => {
+            return Math.ceil(Number(args[0])).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'abs',
+        callback: (str, matcherArg, args, vars) => {
+            return Math.abs(Number(args[0])).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'remaind',
+        callback: (str, matcherArg, args, vars) => {
+            return (Number(args[0]) % Number(args[1])).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'previouschatlog',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar?.chats?.[selchar.chatPage];
+            return chat?.message[Number(args[0])]?.data ?? 'Out of range';
+        },
+        alias: ['previous_chat_log'],
+        description: "",
+    });
+    registerFunction({
+        name: 'tonumber',
+        callback: (str, matcherArg, args, vars) => {
+            return ([...args[0]].filter((v) => {
+                return !isNaN(Number(v)) || v === '.';
+            })).join('');
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'pow',
+        callback: (str, matcherArg, args, vars) => {
+            return Math.pow(Number(args[0]), Number(args[1])).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'arrayelement',
+        callback: (str, matcherArg, args, vars) => {
+            const element = parseArray(args[0]).at(Number(args[1])) ?? 'null';
+            return typeof element === 'object' ? JSON.stringify(element) : String(element);
+        },
+        alias: ['arrayelement'],
+        description: "",
+    });
+    registerFunction({
+        name: 'dictelement',
+        callback: (str, matcherArg, args, vars) => {
+            const element = parseDict(args[0])[args[1]] ?? 'null';
+            return typeof element === 'object' ? JSON.stringify(element) : String(element);
+        },
+        alias: ['dictelement', 'objectelement'],
+        description: "",
+    });
+    registerFunction({
+        name: 'objectassert',
+        callback: (str, matcherArg, args, vars) => {
+            const dict = parseDict(args[0]);
+            if (!dict[args[1]]) {
+                dict[args[1]] = args[2];
+            }
+            return JSON.stringify(dict);
+        },
+        alias: ['dictassert', 'object_assert'],
+        description: "",
+    });
+    registerFunction({
+        name: 'element',
+        callback: (str, matcherArg, args, vars) => {
+            try {
+                const agmts = args.slice(1);
+                let current = args[0];
+                for (const arg of agmts) {
+                    const parsed = JSON.parse(current);
+                    if (parsed === null || (typeof (parsed) !== 'object' && !Array.isArray(parsed))) {
+                        return 'null';
+                    }
+                    current = parsed[arg];
+                    if (!current) {
+                        return 'null';
+                    }
+                }
+                return current;
+            }
+            catch (error) {
+                return 'null';
+            }
+        },
+        alias: ['ele'],
+        description: "",
+    });
+    registerFunction({
+        name: 'arrayshift',
+        callback: (str, matcherArg, args, vars) => {
+            const arr = parseArray(args[0]);
+            arr.shift();
+            return makeArray(arr);
+        },
+        alias: ['arrayshift'],
+        description: "",
+    });
+    registerFunction({
+        name: 'arraypop',
+        callback: (str, matcherArg, args, vars) => {
+            const arr = parseArray(args[0]);
+            arr.pop();
+            return makeArray(arr);
+        },
+        alias: ['arraypop'],
+        description: "",
+    });
+    registerFunction({
+        name: 'arraypush',
+        callback: (str, matcherArg, args, vars) => {
+            const arr = parseArray(args[0]);
+            arr.push(args[1]);
+            return makeArray(arr);
+        },
+        alias: ['arraypush'],
+        description: "",
+    });
+    registerFunction({
+        name: 'arraysplice',
+        callback: (str, matcherArg, args, vars) => {
+            const arr = parseArray(args[0]);
+            arr.splice(Number(args[1]), Number(args[2]), args[3]);
+            return makeArray(arr);
+        },
+        alias: ['arraysplice'],
+        description: "",
+    });
+    registerFunction({
+        name: 'arrayassert',
+        callback: (str, matcherArg, args, vars) => {
+            const arr = parseArray(args[0]);
+            const index = Number(args[1]);
+            if (index >= arr.length) {
+                arr[index] = args[2];
+            }
+            return makeArray(arr);
+        },
+        alias: ['arrayassert'],
+        description: "",
+    });
+    registerFunction({
+        name: 'makearray',
+        callback: (str, matcherArg, args, vars) => {
+            return makeArray(args);
+        },
+        alias: ['array', 'a', 'makearray'],
+        description: "",
+    });
+    registerFunction({
+        name: 'makedict',
+        callback: (str, matcherArg, args, vars) => {
+            let out = {};
+            for (let i = 0; i < args.length; i++) {
+                const current = args[i];
+                const firstEqual = current.indexOf('=');
+                if (firstEqual === -1) {
+                    continue;
+                }
+                const key = current.substring(0, firstEqual);
+                const value = current.substring(firstEqual + 1);
+                out[key] = value ?? 'null';
+            }
+            return JSON.stringify(out);
+        },
+        alias: ['dict', 'd', 'makedict', 'makeobject', 'object', 'o'],
+        description: "",
+    });
+    // Missing basic functions (no arguments)
+    registerFunction({
+        name: 'emotionlist',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            if (!selchar) {
+                return '';
+            }
+            return makeArray(selchar.emotionImages?.map((f) => {
+                return f[0];
+            })) ?? '';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'assetlist',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            if (!selchar || selchar.type === 'group') {
+                return '';
+            }
+            return makeArray(selchar.additionalAssets?.map((f) => {
+                return f[0];
+            }));
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'prefillsupported',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const modelInfo = getModelInfo(db.aiModel);
+            if (modelInfo.format === LLMFormat.Anthropic || modelInfo.format === LLMFormat.AnthropicLegacy) {
+                return modelInfo.flags.includes(LLMFlags.hasPrefill) ? '1' : '0';
+            }
+            return db.aiModel.startsWith('claude') ? '1' : '0';
+        },
+        alias: ['prefill_supported', 'prefill'],
+        description: "",
+    });
+    registerFunction({
+        name: 'screenwidth',
+        callback: (str, matcherArg, args, vars) => {
+            return window.innerWidth.toString();
+        },
+        alias: ['screen_width'],
+        description: "",
+    });
+    registerFunction({
+        name: 'screenheight',
+        callback: (str, matcherArg, args, vars) => {
+            return window.innerHeight.toString();
+        },
+        alias: ['screen_height'],
+        description: "",
+    });
+    registerFunction({
+        name: 'cbr',
+        callback: (str, matcherArg, args, vars) => {
+            if (args.length > 0) {
+                return str.repeat(Number(args[0]) < 1 ? 1 : Number(args[0]));
+            }
+            return '\\n';
+        },
+        alias: ['cnl', 'cnewline'],
+        description: "",
+    });
+    registerFunction({
+        name: 'decbo',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9b8';
+        },
+        alias: ['displayescapedcurlybracketopen'],
+        description: "",
+    });
+    registerFunction({
+        name: 'decbc',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9b9';
+        },
+        alias: ['displayescapedcurlybracketclose'],
+        description: "",
+    });
+    registerFunction({
+        name: 'bo',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9b8\uE9b8';
+        },
+        alias: ['ddecbo', 'doubledisplayescapedcurlybracketopen'],
+        description: "",
+    });
+    registerFunction({
+        name: 'bc',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9b9\uE9b9';
+        },
+        alias: ['ddecbc', 'doubledisplayescapedcurlybracketclose'],
+        description: "",
+    });
+    registerFunction({
+        name: 'displayescapedbracketopen',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9BA';
+        },
+        alias: ['debo', '('],
+        description: "",
+    });
+    registerFunction({
+        name: 'displayescapedbracketclose',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9BB';
+        },
+        alias: ['debc', ')'],
+        description: "",
+    });
+    registerFunction({
+        name: 'displayescapedanglebracketopen',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9BC';
+        },
+        alias: ['deabo', '<'],
+        description: "",
+    });
+    registerFunction({
+        name: 'displayescapedanglebracketclose',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9BD';
+        },
+        alias: ['deabc', '>'],
+        description: "",
+    });
+    registerFunction({
+        name: 'displayescapedcolon',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9BE';
+        },
+        alias: ['dec', ':'],
+        description: "",
+    });
+    registerFunction({
+        name: 'displayescapedsemicolon',
+        callback: (str, matcherArg, args, vars) => {
+            return '\uE9BF';
+        },
+        alias: [';'],
+        description: "",
+    });
+    registerFunction({
+        name: 'chardisplayasset',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            if (!selchar.prebuiltAssetCommand) {
+                return makeArray([]);
+            }
+            const excludes = selchar.prebuiltAssetExclude ?? [];
+            const arr = (selchar?.additionalAssets ?? []).filter((f) => {
+                return !excludes.includes(f[1]);
+            });
+            return makeArray(arr.map((f) => {
+                return f[0];
+            }));
+        },
+        alias: [],
+        description: "",
+    });
+    // Missing functions with :: arguments
+    registerFunction({
+        name: 'history',
+        callback: (str, matcherArg, args, vars) => {
+            if (args.length === 0) {
+                const db = getDatabase();
+                const selchar = db.characters[getSelectedCharID()];
+                const chat = selchar.chats[selchar.chatPage];
+                return makeArray([{
+                        role: 'char',
+                        data: chat.fmIndex === -1 ? selchar.firstMessage : selchar.alternateGreetings[chat.fmIndex]
+                    }].concat(chat.message).map((v) => {
+                    v = safeStructuredClone(v);
+                    v.data = risuChatParser(v.data, matcherArg);
+                    return JSON.stringify(v);
+                }));
+            }
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const chat = selchar.chats[selchar.chatPage];
+            return makeArray(chat.message.map((f) => {
+                let data = '';
+                if (args.includes('role')) {
+                    data += f.role + ': ';
+                }
+                data += f.data;
+                return data;
+            }));
+        },
+        alias: ['messages'],
+        description: "",
+    });
+    registerFunction({
+        name: 'range',
+        callback: (str, matcherArg, args, vars) => {
+            const arr = parseArray(args[0]);
+            const start = arr.length > 1 ? Number(arr[0]) : 0;
+            const end = arr.length > 1 ? Number(arr[1]) : Number(arr[0]);
+            const step = arr.length > 2 ? Number(arr[2]) : 1;
+            let out = [];
+            for (let i = start; i < end; i += step) {
+                out.push(i.toString());
+            }
+            return makeArray(out);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'date',
+        callback: (str, matcherArg, args, vars) => {
+            if (args.length === 0) {
+                const now = new Date();
+                return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+            }
+            const secondParam = args[1];
+            let t = 0;
+            if (secondParam) {
+                t = (Number(secondParam) / 1000);
+                if (isNaN(t)) {
+                    t = 0;
+                }
+            }
+            return dateTimeFormat(args[0], t);
+        },
+        alias: ['datetimeformat'],
+        description: "",
+    });
+    registerFunction({
+        name: 'time',
+        callback: (str, matcherArg, args, vars) => {
+            if (args.length === 0) {
+                const now = new Date();
+                return `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+            }
+            const secondParam = args[1];
+            let t = 0;
+            if (secondParam) {
+                t = (Number(secondParam) / 1000);
+                if (isNaN(t)) {
+                    t = 0;
+                }
+            }
+            return dateTimeFormat(args[0], t);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'moduleenabled',
+        callback: (str, matcherArg, args, vars) => {
+            const modules = getModules();
+            for (const module of modules) {
+                if (module.namespace === args[0]) {
+                    return '1';
+                }
+            }
+            return '0';
+        },
+        alias: ['module_enabled'],
+        description: "",
+    });
+    registerFunction({
+        name: 'moduleassetlist',
+        callback: (str, matcherArg, args, vars) => {
+            const module = getModules()?.find((f) => {
+                return f.namespace === args[0];
+            });
+            if (!module) {
+                return '';
+            }
+            return makeArray(module.assets?.map((f) => {
+                return f[0];
+            }));
+        },
+        alias: ['module_assetlist'],
+        description: "",
+    });
+    registerFunction({
+        name: 'filter',
+        callback: (str, matcherArg, args, vars) => {
+            const array = parseArray(args[0]);
+            const filterTypes = [
+                'all',
+                'nonempty',
+                'unique',
+            ];
+            let filterType = filterTypes.indexOf(args[1]);
+            if (filterType === -1) {
+                filterType = 0;
+            }
+            return makeArray(array.filter((f, i) => {
+                switch (filterType) {
+                    case 0:
+                        return f !== '' && i === array.indexOf(f);
+                    case 1:
+                        return f !== '';
+                    case 2:
+                        return i === array.indexOf(f);
+                }
+            }));
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'all',
+        callback: (str, matcherArg, args, vars) => {
+            const array = args.length > 1 ? args : parseArray(args[0]);
+            const all = array.every((f) => {
+                return f === '1';
+            });
+            return all ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'any',
+        callback: (str, matcherArg, args, vars) => {
+            const array = args.length > 1 ? args : parseArray(args[0]);
+            const any = array.some((f) => {
+                return f === '1';
+            });
+            return any ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'min',
+        callback: (str, matcherArg, args, vars) => {
+            const val = args.length > 1 ? args : parseArray(args[0]);
+            return Math.min(...val.map((f) => {
+                const num = Number(f);
+                if (isNaN(num)) {
+                    return 0;
+                }
+                return num;
+            })).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'max',
+        callback: (str, matcherArg, args, vars) => {
+            const val = args.length > 1 ? args : parseArray(args[0]);
+            return Math.max(...val.map((f) => {
+                const num = Number(f);
+                if (isNaN(num)) {
+                    return 0;
+                }
+                return num;
+            })).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'sum',
+        callback: (str, matcherArg, args, vars) => {
+            const val = args.length > 1 ? args : parseArray(args[0]);
+            return val.map((f) => {
+                const num = Number(f);
+                if (isNaN(num)) {
+                    return 0;
+                }
+                return num;
+            }).reduce((a, b) => a + b, 0).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'average',
+        callback: (str, matcherArg, args, vars) => {
+            const val = args.length > 1 ? args : parseArray(args[0]);
+            const sum = val.map((f) => {
+                const num = Number(f);
+                if (isNaN(num)) {
+                    return 0;
+                }
+                return num;
+            }).reduce((a, b) => a + b, 0);
+            return (sum / val.length).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'fixnum',
+        callback: (str, matcherArg, args, vars) => {
+            return Number(args[0]).toFixed(Number(args[1]));
+        },
+        alias: ['fixnum', 'fixnumber'],
+        description: "",
+    });
+    registerFunction({
+        name: 'unicodeencode',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].charCodeAt(args[1] ? Number(args[1]) : 0).toString();
+        },
+        alias: ['unicode_encode'],
+        description: "",
+    });
+    registerFunction({
+        name: 'unicodedecode',
+        callback: (str, matcherArg, args, vars) => {
+            return String.fromCharCode(Number(args[0]));
+        },
+        alias: ['unicode_decode'],
+        description: "",
+    });
+    registerFunction({
+        name: 'u',
+        callback: (str, matcherArg, args, vars) => {
+            return String.fromCharCode(parseInt(args[0], 16));
+        },
+        alias: ['unicodedecodefromhex'],
+        description: "",
+    });
+    registerFunction({
+        name: 'ue',
+        callback: (str, matcherArg, args, vars) => {
+            return String.fromCharCode(parseInt(args[0], 16));
+        },
+        alias: ['unicodeencodefromhex'],
+        description: "",
+    });
+    registerFunction({
+        name: 'hash',
+        callback: (str, matcherArg, args, vars) => {
+            return ((pickHashRand(0, args[0]) * 10000000) + 1).toFixed(0).padStart(7, '0');
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'randint',
+        callback: (str, matcherArg, args, vars) => {
+            const min = Number(args[0]);
+            const max = Number(args[1]);
+            if (isNaN(min) || isNaN(max)) {
+                return 'NaN';
+            }
+            return (Math.floor(Math.random() * (max - min + 1)) + min).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'dice',
+        callback: (str, matcherArg, args, vars) => {
+            const notation = args[0].split('d');
+            const num = Number(notation[0]);
+            const sides = Number(notation[1]);
+            if (isNaN(num) || isNaN(sides)) {
+                return 'NaN';
+            }
+            let total = 0;
+            for (let i = 0; i < num; i++) {
+                total += Math.floor(Math.random() * sides) + 1;
+            }
+            return total.toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'fromhex',
+        callback: (str, matcherArg, args, vars) => {
+            return Number.parseInt(args[0], 16).toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'tohex',
+        callback: (str, matcherArg, args, vars) => {
+            return Number.parseInt(args[0]).toString(16);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'metadata',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            switch (args[0].toLocaleLowerCase()) {
+                case 'mobile': {
+                    return isMobile ? '1' : '0';
+                }
+                case 'local': {
+                    return isTauri ? '1' : '0';
+                }
+                case 'node': {
+                    return isNodeServer ? '1' : '0';
+                }
+                case 'version': {
+                    return appVer;
+                }
+                case 'majorversion':
+                case 'majorver':
+                case 'major': {
+                    return appVer.split('.')[0];
+                }
+                case 'language':
+                case 'locale':
+                case 'lang': {
+                    return db.language;
+                }
+                case 'browserlanguage':
+                case 'browserlocale':
+                case 'browserlang': {
+                    return navigator.language;
+                }
+                case 'modelshortname': {
+                    const modelInfo = getModelInfo(db.aiModel);
+                    return modelInfo.shortName ?? modelInfo.name ?? modelInfo.id;
+                }
+                case 'modelname': {
+                    const modelInfo = getModelInfo(db.aiModel);
+                    return modelInfo.name ?? modelInfo.id;
+                }
+                case 'modelinternalid': {
+                    const modelInfo = getModelInfo(db.aiModel);
+                    return modelInfo.internalID ?? modelInfo.id;
+                }
+                case 'modelformat': {
+                    const modelInfo = getModelInfo(db.aiModel);
+                    return modelInfo.format.toString();
+                }
+                case 'modelprovider': {
+                    const modelInfo = getModelInfo(db.aiModel);
+                    return modelInfo.provider.toString();
+                }
+                case 'modeltokenizer': {
+                    const modelInfo = getModelInfo(db.aiModel);
+                    return modelInfo.tokenizer.toString();
+                }
+                case 'imateapot': {
+                    return '🫖';
+                }
+                case 'risutype': {
+                    return isTauri ? 'local' : isNodeServer ? 'node' : 'web';
+                }
+                case 'maxcontext': {
+                    return db.maxContext.toString();
+                }
+                default: {
+                    return `Error: ${args[0]} is not a valid metadata key.`;
+                }
+            }
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'iserror',
+        callback: (str, matcherArg, args, vars) => {
+            return args[0].toLocaleLowerCase().startsWith('error:') ? '1' : '0';
+        },
+        alias: [],
+        description: "",
+    });
+    // Encryption/decryption functions
+    registerFunction({
+        name: 'xor',
+        callback: (str, matcherArg, args, vars) => {
+            const buf = new TextEncoder().encode(args[0]);
+            for (let i = 0; i < buf.length; i++) {
+                buf[i] ^= 0xFF;
+            }
+            return Buffer.from(buf).toString('base64');
+        },
+        alias: ['xorencrypt', 'xorencode', 'xore'],
+        description: "",
+    });
+    registerFunction({
+        name: 'xordecrypt',
+        callback: (str, matcherArg, args, vars) => {
+            const buf = Buffer.from(args[0], 'base64');
+            for (let i = 0; i < buf.length; i++) {
+                buf[i] ^= 0xFF;
+            }
+            return new TextDecoder().decode(buf);
+        },
+        alias: ['xordecode', 'xord'],
+        description: "",
+    });
+    registerFunction({
+        name: 'crypt',
+        callback: (str, matcherArg, args, vars) => {
+            let shift = args[1] ? Number(args[1]) : 32768;
+            if (isNaN(shift)) {
+                shift = 32768;
+            }
+            let result = '';
+            for (let i = 0; i < args[0].length; i++) {
+                const charCode = args[0].charCodeAt(i);
+                if (charCode > 65535) {
+                    result += args[0][i];
+                    continue;
+                }
+                let shiftedCode = charCode + shift;
+                if (shiftedCode > 65535) {
+                    shiftedCode -= 65536;
+                }
+                result += String.fromCharCode(shiftedCode);
+            }
+            return result;
+        },
+        alias: ['crypto', 'caesar', 'encrypt', 'decrypt'],
+        description: "",
+    });
+    /**
+     * @param rand 0-1 random value from PRNG
+     */
+    const randomPickImpl = (str, matcherArg, args, rand) => {
+        if (args.length === 0) {
+            return rand.toString();
+        }
+        let arr;
+        if (args.length === 1) {
+            if (args[0].startsWith('[') && args[0].endsWith(']')) {
+                arr = parseArray(args[0]);
+            }
+            else {
+                arr = args[0].replace(/\\,/g, '§X').split(/\:|\,/g);
+            }
+        }
+        else {
+            arr = args;
+        }
+        const index = matcherArg.tokenizeAccurate ? 0 : Math.floor(rand * arr.length);
+        const element = arr[index];
+        return typeof element === 'string' ? element.replace(/§X/g, ',') : JSON.stringify(element) ?? '';
+    };
+    registerFunction({
+        name: 'random',
+        callback: (str, matcherArg, args, vars) => {
+            return randomPickImpl(str, matcherArg, args, Math.random());
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'pick',
+        callback: (str, matcherArg, args, vars) => {
+            const db = getDatabase();
+            const selchar = db.characters[getSelectedCharID()];
+            const selChat = selchar.chats[selchar.chatPage];
+            const cid = selChat.message.length;
+            const hashRand = pickHashRand(cid, selchar.chaId + (selChat.id ?? ''));
+            return randomPickImpl(str, matcherArg, args, hashRand);
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'roll',
+        callback: (str, matcherArg, args, vars) => {
+            if (args.length === 0) {
+                return '1';
+            }
+            const notation = args[0].split('d');
+            let num = 1;
+            let sides = 6;
+            if (notation.length === 2) {
+                num = Number(notation[0] || 1);
+                sides = Number(notation[1] || 6);
+            }
+            else if (notation.length === 1) {
+                sides = Number(notation[0]);
+            }
+            if (isNaN(num) || isNaN(sides) || num < 1 || sides < 1) {
+                return 'NaN';
+            }
+            let total = 0;
+            for (let i = 0; i < num; i++) {
+                total += Math.floor(Math.random() * sides) + 1;
+            }
+            return total.toString();
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'rollp',
+        callback: (str, matcherArg, args, vars) => {
+            if (args.length === 0) {
+                return '1';
+            }
+            const notation = args[0].split('d');
+            let num = 1;
+            let sides = 6;
+            if (notation.length === 2) {
+                num = Number(notation[0] || 1);
+                sides = Number(notation[1] || 6);
+            }
+            else if (notation.length === 1) {
+                sides = Number(notation[0]);
+            }
+            if (isNaN(num) || isNaN(sides) || num < 1 || sides < 1) {
+                return 'NaN';
+            }
+            let total = 0;
+            for (let i = 0; i < num; i++) {
+                const db = getDatabase();
+                const selchar = db.characters[getSelectedCharID()];
+                const selChat = selchar.chats[selchar.chatPage];
+                const cid = selChat.message.length + (i * 15);
+                const hashRand = pickHashRand(cid, selchar.chaId + (selChat.id ?? ''));
+                total += Math.floor(hashRand * sides) + 1;
+            }
+            return total.toString();
+        },
+        alias: ['rollpick'],
+        description: "",
+    });
+    registerFunction({
+        name: 'hiddenkey',
+        callback: (str, matcherArg, args, vars) => {
+            return '';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'reverse',
+        callback: (str, matcherArg, args, vars) => {
+            return [...(args[0] ?? '')].reverse().join('');
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'comment',
+        callback: (str, matcherArg, args, vars) => {
+            if (!matcherArg.displaying) {
+                return '';
+            }
+            return `<div class="risu-comment">${args[0]}</div>`;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'tex',
+        callback: (str, matcherArg, args, vars) => {
+            return `$$${args[0]}$$`;
+        },
+        alias: ['latex', 'katex'],
+        description: "",
+    });
+    registerFunction({
+        name: 'ruby',
+        callback: (str, matcherArg, args, vars) => {
+            return `<ruby>${args[0]}<rp> (</rp><rt>${args[1]}</rt><rp>) </rp></ruby>`;
+        },
+        alias: ['furigana'],
+        description: "",
+    });
+    registerFunction({
+        name: 'codeblock',
+        callback: (str, matcherArg, args, vars) => {
+            let code = args[args.length - 1]
+                .replace(/\"/g, '&quot;')
+                .replace(/\'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            if (args.length > 1) {
+                return `<pre-hljs-placeholder lang="${args[0]}">` + code + '</pre-hljs-placeholder>';
+            }
+            return `<pre><code>${code}</code></pre>`;
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'bkspc',
+        callback: (str, matcherArg, args, vars) => {
+            let root = matcherArg?.getNested?.()?.[0];
+            if (!root) {
+                return '';
+            }
+            root = root.trimEnd();
+            let trimPointer = root.length - 1;
+            for (; trimPointer >= 0; trimPointer--) {
+                const char = root[trimPointer];
+                if (trimPointer === 0) {
+                    break;
+                }
+                if (char === ' ' || char === '\n' || char === '\t') {
+                    break;
+                }
+            }
+            if (trimPointer === -1) {
+                trimPointer = 0;
+            }
+            matcherArg?.setNestedRoot(root.substring(0, trimPointer).trimEnd());
+            return '';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'erase',
+        callback: (str, matcherArg, args, vars) => {
+            let root = matcherArg?.getNested?.()?.[0];
+            if (!root) {
+                return '';
+            }
+            root = root.trimEnd();
+            let trimPointer = root.length - 1;
+            let sentenceEndFound = false;
+            for (; trimPointer >= 0; trimPointer--) {
+                const char = root[trimPointer];
+                if (char === '.' || char === '!' || char === '?' || char === '\n') {
+                    sentenceEndFound = true;
+                    break;
+                }
+                if (trimPointer === 0) {
+                    break;
+                }
+            }
+            if (trimPointer === -1) {
+                trimPointer = 0;
+            }
+            else if (sentenceEndFound) {
+                trimPointer += 1;
+            }
+            matcherArg?.setNestedRoot(root.substring(0, trimPointer).trimEnd());
+            return '';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'declare',
+        callback: (str, matcherArg, args, vars) => {
+            matcherArg.var[`__declared_${args[0]}__`] = '1';
+            return '';
+        },
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: '//',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: '?',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: '__',
+        callback: (str, matcherArg, args, vars) => {
+            return callInternalFunction(args);
+        },
+        alias: [],
+        description: "",
+        internalOnly: true,
+    });
+    // Asset display functions (doc_only)
+    registerFunction({
+        name: 'asset',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'emotion',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'audio',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'bg',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'bgm',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'video',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'video-img',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'image',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'img',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'path',
+        callback: 'doc_only',
+        alias: ['raw'],
+        description: "",
+    });
+    registerFunction({
+        name: 'inlay',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'inlayed',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'inlayeddata',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'source',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: "#if",
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+        deprecated: {
+            message: 'Due to limitations of adding operators, #if is deprecated and replaced with #when. Use #when instead.',
+            replacement: '#when',
+        }
+    });
+    registerFunction({
+        name: '#if_pure',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+        deprecated: {
+            message: 'Due to limitations of adding operators, #if_pure is deprecated and replaced with #when with keep operator. Use #when::keep::condition instead.',
+            replacement: '#when',
+        }
+    });
+    registerFunction({
+        name: '#when',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: ':else',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: '#pure',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+        deprecated: {
+            message: 'Due to reparsing issue, #pure is deprecated and replaced with #puredisplay. Use #puredisplay instead.',
+            replacement: '#puredisplay',
+        }
+    });
+    registerFunction({
+        name: '#puredisplay',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: '#escape',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: '#each',
+        callback: 'doc_only',
+        alias: [':each'],
+        description: "",
+    });
+    registerFunction({
+        name: 'slot',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+    registerFunction({
+        name: 'position',
+        callback: 'doc_only',
+        alias: [],
+        description: "",
+    });
+}
+return { risuChatParser, risuEscape, risuUnescape, calcString, parseArray, makeArray };
+})(RisuHost);
+// ==== RISU-ENGINE END ====
+
+// Private-use characters RisuAI uses for escaped brackets; RisuAI maps them back when displaying.
+const RISU_DISPLAY = { '':'{', '':'}', '':'(', '':')', '':'<', '':'>', '':':', '':';' };
+const risuDisplay = t => t.replace(/[-]/g, c => RISU_DISPLAY[c]);
+
+// Parse text the way RisuAI parses a prompt-template item ({chara, role}: setvar and friends
+// are not executed there). variables: toggle_* keys become global chat variables (as Custom
+// Toggles are in RisuAI); the rest act as the preset's default variables.
+// rngSeed makes Math.random-based functions repeatable; it also names the simulated chat,
+// which is what {{pick}} hashes on, so a re-roll behaves like a new chat.
+function createCBSParser(config){
+  const { charName='Character', userName='User', variables={}, persona='', role, rngSeed=null } = config;
+  const globals = {}, defaults = [];
+  for (const [k, v] of Object.entries(variables)) {
+    if (k.startsWith('toggle_')) globals[k] = v; else defaults.push(k + '=' + v);
+  }
+  const chat = { id: 'editor-' + (rngSeed ?? 0), message: [], note: '', localLore: [], fmIndex: -1, scriptstate: {} };
+  const char = { type: 'character', name: charName, nickname: '', chaId: 'cbs-editor', personality: '[Personality]',
+    desc: '[Description]', scenario: '[Scenario]', exampleMessage: '[Example Dialogue]', firstMessage: '',
+    alternateGreetings: [], chats: [chat], chatPage: 0, emotionImages: [], additionalAssets: [], defaultVariables: '' };
+  const db = { characters: [char], aiModel: 'gemini-3-pro-preview', subModel: 'gemini-3-pro-preview', maxContext: 128000,
+    mainPrompt: '[Main Prompt]', jailbreak: '[Jailbreak]', globalNote: '[Global Note]', jailbreakToggle: true,
+    promptTemplate: [], language: 'en', globalChatVariables: globals, templateDefaultVariables: defaults.join('\n') };
+  const ctx = { db, char, chat, persona, userName };
+  let seed = (rngSeed == null ? (Math.random() * 4294967296) >>> 0 : rngSeed >>> 0);
+  const seeded = () => {  // mulberry32
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  const M = new Map();
-  const reg = (name, cb, al=[]) => { M.set(name.toLowerCase().replace(/[\s_-]/g,""), cb); al.forEach(a => M.set(a.toLowerCase().replace(/[\s_-]/g,""), cb)); };
-  const gv = k => vars[k] ?? "";
-  const gt = k => vars['toggle_' + k] ?? toggles[k] ?? "";
-
-  reg("char", () => charName, ["bot"]);
-  reg("user", () => userName);
-  reg("persona", () => persona, ["userpersona"]);
-  reg("personality", () => "[Personality]", ["charpersona"]);
-  reg("description", () => "[Description]", ["chardesc"]);
-  reg("scenario", () => "[Scenario]");
-  reg("exampledialogue", () => "[Example Dialogue]", ["examplemessage"]);
-  reg("mainprompt", () => "[Main Prompt]", ["systemprompt"]);
-  reg("jb", () => "[Jailbreak]", ["jailbreak"]);
-  reg("globalnote", () => "[Global Note]", ["systemnote","ujb"]);
-  reg("chatindex", () => "0");
-  reg("lastmessageid", () => "0", ["lastmessageindex"]);
-  reg("isfirstmsg", () => "1");
-  reg("blank", () => "");
-  reg("time", () => new Date().toLocaleTimeString());
-  reg("isotime", () => new Date().toISOString());
-  reg("isodate", () => new Date().toISOString().split("T")[0]);
-  reg("unixtime", () => String(Math.floor(Date.now()/1000)));
-  reg("br", (s,m,a) => "\n".repeat(parseInt(a[0])||1), ["newline"]);
-  reg("cbr", (s,m,a) => "\n".repeat(parseInt(a[0])||1), ["cnl","cnewline"]);
-  reg("decbo", () => "{", ["displayescapedcurlybracketopen"]);
-  reg("decbc", () => "}", ["displayescapedcurlybracketclose"]);
-  reg("bo", () => "{{", ["ddecbo"]);
-  reg("bc", () => "}}", ["ddecbc"]);
-  reg("displayescapedbracketopen", () => "(", ["debo"]);
-  reg("displayescapedbracketclose", () => ")", ["debc"]);
-  reg("displayescapedanglebracketopen", () => "<", ["deabo"]);
-  reg("displayescapedanglebracketclose", () => ">", ["deabc"]);
-  reg("displayescapedcolon", () => ":", ["dec"]);
-  reg("displayescapedsemicolon", () => ";");
-
-  reg("getvar", (s,m,a) => vars[a[0]] ?? "");
-  reg("setvar", (s,m,a) => { if(a.length>=2) vars[a[0]] = a.slice(1).join("::"); return ""; });
-  reg("addvar", (s,m,a) => { if(a.length>=2) vars[a[0]] = String(parseFloat(vars[a[0]]||"0")+parseFloat(a[1])); return ""; });
-  reg("setdefaultvar", (s,m,a) => { if(a.length>=2 && !(a[0] in vars)) vars[a[0]] = a.slice(1).join("::"); return ""; }, ["setdefault"]);
-  reg("getglobalvar", (s,m,a) => vars[a[0]] ?? vars["global_"+a[0]] ?? "");
-  reg("tempvar", (s,m,a,tv) => tv?.[a[0]] ?? "", ["gettempvar"]);
-  reg("settempvar", (s,m,a,tv) => { if(a.length>=2 && tv) tv[a[0]] = a.slice(1).join("::"); return {text:"",var:tv||{}}; });
-
-  reg("calc", (s,m,a) => String(calcString(a.join("::"))));
-  reg("round", (s,m,a) => String(Math.round(parseFloat(a[0])||0)));
-  reg("floor", (s,m,a) => String(Math.floor(parseFloat(a[0])||0)));
-  reg("ceil", (s,m,a) => String(Math.ceil(parseFloat(a[0])||0)));
-  reg("abs", (s,m,a) => String(Math.abs(parseFloat(a[0])||0)));
-  reg("remaind", (s,m,a) => String((parseFloat(a[0])||0)%(parseFloat(a[1])||1)));
-  reg("pow", (s,m,a) => String(Math.pow(parseFloat(a[0])||0,parseFloat(a[1])||0)));
-  reg("fixnum", (s,m,a) => (parseFloat(a[0])||0).toFixed(parseInt(a[1])||0), ["fixnumber"]);
-  reg("min", (s,m,a) => String(Math.min(...a.map(Number).filter(n=>!isNaN(n)))));
-  reg("max", (s,m,a) => String(Math.max(...a.map(Number).filter(n=>!isNaN(n)))));
-  reg("sum", (s,m,a) => String(a.map(Number).filter(n=>!isNaN(n)).reduce((x,y)=>x+y,0)));
-  reg("average", (s,m,a) => { const n=a.map(Number).filter(x=>!isNaN(x)); return n.length?String(n.reduce((x,y)=>x+y,0)/n.length):"0"; });
-  reg("equal", (s,m,a) => a[0]===a[1]?"1":"0");
-  reg("notequal", (s,m,a) => a[0]!==a[1]?"1":"0");
-  reg("greater", (s,m,a) => parseFloat(a[0])>parseFloat(a[1])?"1":"0");
-  reg("less", (s,m,a) => parseFloat(a[0])<parseFloat(a[1])?"1":"0");
-  reg("greaterequal", (s,m,a) => parseFloat(a[0])>=parseFloat(a[1])?"1":"0", ["greater_equal"]);
-  reg("lessequal", (s,m,a) => parseFloat(a[0])<=parseFloat(a[1])?"1":"0", ["less_equal"]);
-  reg("and", (s,m,a) => (isTruthy(a[0])&&isTruthy(a[1]))?"1":"0");
-  reg("or", (s,m,a) => (isTruthy(a[0])||isTruthy(a[1]))?"1":"0");
-  reg("not", (s,m,a) => isTruthy(a[0])?"0":"1");
-  reg("all", (s,m,a) => a.every(isTruthy)?"1":"0");
-  reg("any", (s,m,a) => a.some(isTruthy)?"1":"0");
-  reg("startswith", (s,m,a) => (a[0]??"").startsWith(a[1]??"")?"1":"0");
-  reg("endswith", (s,m,a) => (a[0]??"").endsWith(a[1]??"")?"1":"0");
-  reg("contains", (s,m,a) => (a[0]??"").includes(a[1]??"")?"1":"0");
-  reg("replace", (s,m,a) => (a[0]??"").replaceAll(a[1]??"",a[2]??""));
-  reg("split", (s,m,a) => makeArray((a[0]??"").split(a[1]??"")));
-  reg("join", (s,m,a) => parseArray(a[0]??"[]").join(a[1]??""));
-  reg("trim", (s,m,a) => (a[0]??"").trim());
-  reg("length", (s,m,a) => String((a[0]??"").length));
-  reg("lower", (s,m,a) => (a[0]??"").toLowerCase(), ["lowercase"]);
-  reg("upper", (s,m,a) => (a[0]??"").toUpperCase(), ["uppercase"]);
-  reg("capitalize", (s,m,a) => { const v=a[0]??""; return v.charAt(0).toUpperCase()+v.slice(1); });
-  reg("reverse", (s,m,a) => (a[0]??"").split("").reverse().join(""));
-  reg("tonumber", (s,m,a) => [...(a[0]??"")].filter(c => !isNaN(Number(c)) || c === '.').join(""));
-  reg("spread", (s,m,a) => parseArray(a[0]??"[]").join(a[1]??", "));
-  reg("makearray", (s,m,a) => makeArray(a), ["array","a"]);
-  reg("arrayelement", (s,m,a) => { const arr=parseArray(a[0]??"[]"); const v=arr[parseInt(a[1])||0]; return typeof v==="string"?v:JSON.stringify(v??""); });
-  reg("arraylength", (s,m,a) => String(parseArray(a[0]??"[]").length));
-  reg("arraypush", (s,m,a) => { const arr=parseArray(a[0]??"[]"); arr.push(a[1]??""); return makeArray(arr); });
-  reg("arraypop", (s,m,a) => { const arr=parseArray(a[0]??"[]"); arr.pop(); return makeArray(arr); });
-  reg("arrayshift", (s,m,a) => { const arr=parseArray(a[0]??"[]"); arr.shift(); return makeArray(arr); });
-  reg("makedict", (s,m,a) => { const o={}; a.forEach(x=>{const i=x.indexOf("=");if(i!==-1)o[x.substring(0,i)]=x.substring(i+1);}); return JSON.stringify(o); }, ["dict","d","object","o","makeobject"]);
-  reg("dictelement", (s,m,a) => { try{return String(JSON.parse(a[0]??"{}")[a[1]]??"");}catch{return "";} }, ["objectelement"]);
-  reg("random", (s,m,a) => a.length>0?a[Math.floor(rng()*a.length)]:String(rng()));
-  reg("pick", (s,m,a) => a.length>0?a[Math.floor(rng()*a.length)]:"");
-  reg("randint", (s,m,a) => { const mn=parseInt(a[0])||0,mx=parseInt(a[1])||100; return String(Math.floor(rng()*(mx-mn+1))+mn); });
-  reg("dice", (s,m,a) => String(Math.floor(rng()*(parseInt(a[0])||6))+1));
-  reg("range", (s,m,a) => { const st=parseInt(a[0])||0,en=parseInt(a[1])||0,sp=parseInt(a[2])||1,r=[]; for(let i=st;sp>0?i<=en:i>=en;i+=sp)r.push(String(i)); return makeArray(r); });
-  reg("model", () => "gemini-3-pro-preview");
-  reg("axmodel", () => "gemini-3-pro-preview");
-  reg("role", () => "char");
-  reg("jbtoggled", () => "1");
-  reg("maxcontext", () => "128000");
-  reg("//", () => "");
-  reg("comment", () => "");
-  reg("filter", (s,m,a) => { let arr=parseArray(a[0]??"[]"); const t=a[1]??"all"; if(t==="nonempty"||t==="all") arr=arr.filter(v=>v!==""&&v!==null&&v!==undefined); if(t==="unique"||t==="all") arr=[...new Set(arr)]; return makeArray(arr); });
-  reg("risu", () => "[RisuAI]");
-  reg("button", () => "[Button]");
-  reg("asset", () => "[Asset]");
-  reg("emotion", () => "[Emotion]");
-  reg("lastmessage", () => "");
-  reg("previouscharchat", () => "", ["lastcharmessage"]);
-  reg("previoususerchat", () => "", ["lastusermessage"]);
-
-  function matcher(p1, tv) {
-    try {
-      if(p1.startsWith("? ")) return calcString(p1.substring(2)).toString();
-      const ci=p1.indexOf(":");
-      let sp; if(ci!==-1&&p1[ci+1]===":") sp=p1.split("::"); else sp=p1.split(":");
-      const nm=sp[0].toLowerCase().replace(/[\s_-]/g,"");
-      const cb=M.get(nm);
-      if(cb) return cb(p1,{},sp.slice(1),tv);
-    } catch{}
-    return null;
-  }
-
-  function blockStartMatcher(p1) {
-    if(p1.startsWith("#if")||p1.startsWith("#if_pure ")) {
-      const st=p1.split(" ",2)[1];
-      if(st==="true"||st==="1") return {type:p1.startsWith("#if_pure")?"ifpure":"parse"};
-      return {type:"ignore"};
-    }
-    if(p1.startsWith("#when")) {
-      if(p1.startsWith("#when ")) { const st=p1.split(" ",2)[1]; return {type:(st==="true"||st==="1")?"newif":"newif-falsy"}; }
-      if(p1.startsWith("#when::")) {
-        const st=p1.split("::").slice(1);
-        if(st.length===1) return {type:(st[0]==="true"||st[0]==="1")?"newif":"newif-falsy"};
-        let mode="normal";
-        while(st.length>1) {
-          const cond=st.pop(),op=st.pop();
-          switch(op) {
-            case "not": st.push(isTruthy(cond)?"0":"1"); break;
-            case "keep": mode="keep"; st.push(cond); break;
-            case "legacy": mode="legacy"; st.push(cond); break;
-            case "and": {const c2=st.pop(); st.push((isTruthy(cond)&&isTruthy(c2))?"1":"0"); break;}
-            case "or": {const c2=st.pop(); st.push((isTruthy(cond)||isTruthy(c2))?"1":"0"); break;}
-            case "is": {const c2=st.pop(); st.push(cond===c2?"1":"0"); break;}
-            case "isnot": {const c2=st.pop(); st.push(cond!==c2?"1":"0"); break;}
-            case "var": st.push(isTruthy(gv(cond))?"1":"0"); break;
-            case "toggle": st.push(isTruthy(gt(cond))?"1":"0"); break;
-            case "vis": {const vn=st.pop(); st.push(gv(vn)===cond?"1":"0"); break;}
-            case "visnot": {const vn=st.pop(); st.push(gv(vn)!==cond?"1":"0"); break;}
-            case "tis": {const tn=st.pop(); st.push(gt(tn)===cond?"1":"0"); break;}
-            case "tisnot": {const tn=st.pop(); st.push(gt(tn)!==cond?"1":"0"); break;}
-            case ">": {const c2=st.pop(); st.push(parseFloat(c2)>parseFloat(cond)?"1":"0"); break;}
-            case "<": {const c2=st.pop(); st.push(parseFloat(c2)<parseFloat(cond)?"1":"0"); break;}
-            case ">=": {const c2=st.pop(); st.push(parseFloat(c2)>=parseFloat(cond)?"1":"0"); break;}
-            case "<=": {const c2=st.pop(); st.push(parseFloat(c2)<=parseFloat(cond)?"1":"0"); break;}
-            default: st.push(isTruthy(cond)?"1":"0"); break;
-          }
-        }
-        const fc=st[0];
-        if(isTruthy(fc)) return mode==="keep"?{type:"newif",type2:"keep"}:mode==="legacy"?{type:"parse"}:{type:"newif"};
-        return mode==="keep"?{type:"newif-falsy",type2:"keep"}:mode==="legacy"?{type:"ignore"}:{type:"newif-falsy"};
-      }
-      return {type:"newif-falsy"};
-    }
-    if(p1==="#pure") return {type:"pure"};
-    if(p1==="#pure_display"||p1==="#puredisplay") return {type:"pure-display"};
-    if(p1==="#code") return {type:"normalize"};
-    if(p1.startsWith("#escape")) return {type:"escape",mode:p1.substring(7).trim()==="::keep"?"keep":undefined};
-    if(p1.startsWith("#each")) { let t2=p1.substring(5).trim(),mode; if(t2.startsWith("::keep ")){mode="keep";t2=t2.substring(7).trim();} if(t2.startsWith("as "))t2=t2.substring(3).trim(); return {type:"each",type2:t2,mode}; }
-    if(p1.startsWith("#func")) { const s=p1.split(" "); if(s.length>1) return {type:"function",funcArg:s.slice(1)}; }
-    return {type:"nothing"};
-  }
-
-  function trimLines(p) { return p.split("\n").map(v=>v.trimStart()).join("\n").trim(); }
-
-  function blockEndMatcher(p1,type) {
-    const pt=p1.trim();
-    switch(type.type) {
-      case "pure": case "pure-display": case "function": return pt;
-      case "parse": return trimLines(pt);
-      case "each": return type.mode==="keep"?p1:trimLines(pt);
-      case "ifpure": return p1;
-      case "newif": case "newif-falsy": {
-        const lines=p1.split("\n");
-        if(lines.length===1) { const ei=p1.indexOf("{{:else}}"); if(ei!==-1) return type.type==="newif"?p1.substring(0,ei):p1.substring(ei+9); return type.type==="newif"?p1:""; }
-        const el=lines.findIndex(v=>v.trim()==="{{:else}}");
-        if(el!==-1&&type.type==="newif") lines.splice(el);
-        if(el!==-1&&type.type==="newif-falsy") lines.splice(0,el+1);
-        if(el===-1&&type.type==="newif-falsy") return "";
-        if(type.type2!=="keep") { while(lines.length>0&&lines[0].trim()==="") lines.shift(); while(lines.length>0&&lines[lines.length-1].trim()==="") lines.pop(); }
-        return lines.join("\n");
-      }
-      case "normalize": return pt.replaceAll("\n","").replaceAll("\t","");
-      case "escape": return (type.mode==="keep"?p1:pt).replaceAll("{{","\\{\\{").replaceAll("}}","\\}\\}");
-      default: return "";
-    }
-  }
-
-  function parse(da,callStack=0) {
-    if(callStack>20) return "ERROR: Call stack limit reached";
-    let ptr=0, nested=[""], stk=new Array(512).fill(0), pm=new Map(), bnt=new Map(), tv={}, fns=new Map();
-    da=da.replace(/<(user|char|bot)>/gi,"{{$1}}");
-    const isPM=()=>pm.size>0;
-    while(ptr<da.length) {
-      switch(da[ptr]) {
-        case "{": { if(da[ptr+1]!=="{"&&da[ptr+1]!=="#"){nested[0]+=da[ptr];break;} ptr++; nested.unshift(""); stk[nested.length]=1; break; }
-        case "}": {
-          if(da[ptr+1]!=="}"||nested.length===1||stk[nested.length]!==1){nested[0]+=da[ptr];break;}
-          ptr++; const dat=nested.shift();
-          if(dat.startsWith("#")||dat.startsWith(":")) {
-            if(isPM()){nested[0]+=`{{${dat}}}`;if(dat!==":else"){nested.unshift("");stk[nested.length]=6;}break;}
-            const mr=blockStartMatcher(dat);
-            if(mr.type==="nothing"){nested[0]+=`{{${dat}}}`;break;}
-            nested.unshift(""); stk[nested.length]=5; bnt.set(nested.length,mr);
-            if(["ignore","pure","each","function","pure-display","escape"].includes(mr.type)) pm.set(nested.length,true);
-            break;
-          }
-          if(dat.startsWith("/")&&!dat.startsWith("//")) {
-            if(stk[nested.length]===5) {
-              const bt=bnt.get(nested.length);
-              if(["ignore","pure","each","function","pure-display","escape"].includes(bt.type)) pm.delete(nested.length);
-              bnt.delete(nested.length);
-              const d2=nested.shift(), mr=blockEndMatcher(d2,bt);
-              if(bt.type==="each") {
-                const ai=bt.type2.lastIndexOf(" as ");
-                let sub=bt.type2.substring(ai+4).trim(), arr=parseArray(bt.type2.substring(0,ai));
-                if(ai===-1){const si=bt.type2.lastIndexOf(" ");if(si===-1)break;sub=bt.type2.substring(si+1);arr=parseArray(bt.type2.substring(0,si));}
-                let added=""; for(let i=0;i<arr.length;i++) added+=mr.replaceAll(`{{slot::${sub}}}`,typeof arr[i]==="string"?arr[i]:JSON.stringify(arr[i]));
-                da=da.substring(0,ptr+1)+(bt.mode==="keep"?added:added.trim())+da.substring(ptr+1); break;
-              }
-              if(bt.type==="function"){fns.set(bt.funcArg[0],{data:mr,arg:bt.funcArg.slice(1)});break;}
-              if(bt.type==="pure-display"){nested[0]+=mr.replaceAll("{{","\\{\\{").replaceAll("}}","\\}\\}");break;}
-              if(mr==="")break; nested[0]+=mr; break;
-            }
-            if(stk[nested.length]===6){const sf=nested.shift();nested[0]+=sf+`{{${dat}}}`;break;}
-          }
-          if(dat.startsWith("call::")) {
-            if(callStack>20){nested[0]+="ERROR: Call stack limit";break;}
-            const ad=dat.split("::").slice(1),fn=fns.get(ad[0]);
-            if(fn){let d=fn.data;for(let i=0;i<ad.length;i++)d=d.replaceAll(`{{arg::${i}}}`,ad[i]);nested[0]+=parse(d,callStack+1);break;}
-          }
-          const mc=isPM()?null:matcher(dat,tv);
-          if(!mc&&mc!==""){nested[0]+=`{{${dat}}}`;}
-          else if(typeof mc==="string"){nested[0]+=mc;}
-          else{nested[0]+=mc.text;tv=mc.var;}
-          break;
-        }
-        default: { nested[0]+=da[ptr]; break; }
-      }
-      ptr++;
-    }
-    if(nested.length===1) return nested[0];
-    let r=""; while(nested.length>1){let d=stk[nested.length]===1?"{{":"<";d+=nested.shift();r=d+r;} return nested[0]+r;
-  }
-  return {parse,vars};
+  return {
+    parse(text){
+      RisuHost._use(ctx);
+      const realRandom = Math.random;
+      Math.random = seeded;
+      try { return risuDisplay(RisuEngine.risuChatParser(text, { chara: char, db, role })); }
+      finally { Math.random = realRandom; RisuHost._use(null); }
+    },
+    // Variables visible to the prompt: defaults, anything set during the parse, and toggles
+    get vars(){
+      const o = Object.fromEntries(defaults.map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+      for (const [k, v] of Object.entries(chat.scriptstate)) o[k.replace(/^\$/, '')] = v;
+      return Object.assign(o, globals);
+    },
+  };
 }
+
 
 // Block tags that open a new depth level
 const BLOCK_OPEN = /^#(if|if_pure|when|each|pure|puredisplay|pure_display|code|escape|func)\b/;
@@ -770,11 +3727,17 @@ function analyzeActiveRuns(template, cfg){
     }else{
       let e=i;
       while(e<template.length&&!(template[e]==='{'&&template[e+1]==='{'))e++;
-      if(e>i){
+      // Mark only the visible text of each line: newlines and edge whitespace stay bare so
+      // line-sensitive rules (a multi-line #when's {{:else}} line, trimming) see the real layout.
+      const re=/[^\s](?:[^\n]*[^\s])?/g, seg=template.substring(i,e);
+      let last=0, m;
+      while((m=re.exec(seg))!==null){
         const id=runs.length;
-        runs.push({start:i,end:e});
-        injected+=OPEN+id+SEP+template.substring(i,e)+CLOSE;
+        runs.push({start:i+m.index,end:i+m.index+m[0].length});
+        injected+=seg.substring(last,m.index)+OPEN+id+SEP+m[0]+CLOSE;
+        last=m.index+m[0].length;
       }
+      injected+=seg.substring(last);
       i=e;
     }
   }
@@ -1114,7 +4077,7 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{//::CBS Editor v6.5}}';
+ed.value='{{comment::CBS Editor v6.5}}';
 
 let toastT;
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.className='toast',2500);}
@@ -1150,7 +4113,10 @@ function togVars(){
 }
 
 // Parser config from the current names/persona/toggles/vars/seed
-function parserCfg(){return {charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed};}
+function parserCfg(){
+  const it=S.mode==='prompt'&&S.activeIdx>=0?S.promptTemplate[S.activeIdx]:null;
+  return {charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),role:it?.role,rngSeed:S.rngSeed};
+}
 
 function parse(){
   try{
