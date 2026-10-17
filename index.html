@@ -4614,12 +4614,15 @@ function confirmDiscard(next){
 _('bImp').addEventListener('click',()=>_('fIn').click());
 _('fIn').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
+  const prev=S.preset;
   try{
     if(/\.txt$/i.test(f.name))importFlat(await f.text(),f.name);
     else{
       const pr=await importRisuPreset(await f.arrayBuffer(),f.name);
       if(confirmDiscard(pr.name||f.name))loadPreset(pr);
     }
+    // A newly loaded preset remembers its file name, so Export TXT can reuse it
+    if(S.preset!==prev)S.fileBase=f.name.replace(/\.[^.]+$/,'');
   }
   catch(err){toast('Import failed: '+err.message,true);console.error(err);}
   e.target.value='';
@@ -4635,7 +4638,7 @@ _('bExp').addEventListener('click',async()=>{
 
 _('bFlat').addEventListener('click',()=>{
   const txt=flattenPreset();
-  downloadBlob(new TextEncoder().encode(txt),(S.presetName||'preset')+'_flat.txt');
+  downloadBlob(new TextEncoder().encode(txt),(S.fileBase||S.presetName||'preset')+'.txt');
   S.dirty=false;
   toast('Exported .txt');
 });
