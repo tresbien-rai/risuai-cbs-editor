@@ -299,11 +299,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
     <div class="htitle">CBS Editor <span>v7.0</span></div>
     <div class="hsep"></div>
     <button class="hb" id="bImp">Import</button>
-    <button class="hb g" id="bExp">Export</button>
-    <button class="hb" id="bFlat" title="Export flattened text">Flatten</button>
-    <button class="hb" id="bUnflat" title="Import a flattened .txt back into the preset">Unflatten</button>
+    <button class="hb g" id="bExp" title="Export the preset as .risup">Export</button>
+    <button class="hb" id="bFlat" title="Export the preset as editable text (.txt). Import the .txt to turn it back into the preset">Export TXT</button>
     <input type="file" id="fIn" accept=".json,.risupreset,.risup,.preset,.txt" style="display:none">
-    <input type="file" id="fFlat" accept=".txt,text/plain" style="display:none">
     <div class="hsep"></div>
     <span class="hl">{{char}}</span>
     <input class="hi" id="cN" value="CHAR">
@@ -4333,7 +4331,7 @@ function saveEdit(){
 }
 
 // ============================================================
-// Import / Export / Flatten
+// Import / Export / Export TXT
 // ============================================================
 function loadPreset(pr){
   S.dirty=false;
@@ -4369,13 +4367,28 @@ function buildExport(){
   return p;
 }
 
+// Everything in the preset except what the text sections carry (item texts, toggles and,
+// without a template, the main prompt), so importing the .txt alone rebuilds the full preset.
+function flatSettings(){
+  if(!S.preset)return null;
+  const p=JSON.parse(JSON.stringify(buildExport()));
+  delete p.customPromptTemplateToggle;
+  if(p.promptTemplate&&p.promptTemplate.length){
+    // Blank rather than delete, so fields that existed (even empty) still exist after import
+    p.promptTemplate.forEach(it=>{if(isEd(it))itFields(it).forEach(f=>{if(f in it)it[f]='';});});
+  }else delete p.mainPrompt;
+  return p;
+}
+
 function flattenPreset(){
   saveEdit();
   const parts=[];
+  const settings=flatSettings();
+  const withSettings=()=>{if(settings)parts.push(FLAT_SETTINGS+'\n'+JSON.stringify(settings));return parts.join('\n\n');};
   if(S.panelText&&S.panelText.trim()){
     parts.push(FLAT_TOGGLES+'\n'+S.panelText.trim());
   }
-  if(!S.promptTemplate.length){parts.push(FLAT_PROMPT+'\n'+ed.value);return parts.join('\n\n');}
+  if(!S.promptTemplate.length){parts.push(FLAT_PROMPT+'\n'+ed.value);return withSettings();}
   S.promptTemplate.forEach((it,i)=>{
     const baseLabel='['+i+'] '+it.type.toUpperCase()+(it.type2?' ('+it.type2+')':'')+(it.role?' ['+it.role+']':'')+(it.name?' "'+it.name+'"':'');
     if(isEd(it)){
@@ -4393,16 +4406,17 @@ function flattenPreset(){
       parts.push('--- '+baseLabel+' ---\n['+pLabel(it)+']');
     }
   });
-  return parts.join('\n\n');
+  return withSettings();
 }
 
 // ============================================================
-// Flat import: turn a Flatten .txt (possibly edited elsewhere) back into the preset
+// TXT import: turn an exported .txt (possibly edited elsewhere) back into a preset
 // ============================================================
 const FLAT_TOGGLES='=== CUSTOM TOGGLES ===', FLAT_PROMPT='=== PROMPT ===';
+const FLAT_SETTINGS='=== PRESET SETTINGS (JSON; keep this block so importing the .txt restores the full preset) ===';
 // Mirrors the label built in flattenPreset: [i] TYPE (type2) [role] "name" (field)
 const FLAT_HDR=/^--- \[(\d+)\] ([A-Za-z0-9_]+)(?: \(([^)]*)\))?(?: \[([^\]]*)\])?(?: "(.*)")?(?: \((text|innerFormat|defaultText)\))? ---$/;
-// Flatten upper-cases the type; map it back to RisuAI's casing
+// Export TXT upper-cases the type; map it back to RisuAI's casing
 const KNOWN_TYPES=['plain','jailbreak','cot','chatML','persona','description','lorebook','postEverything','memory','authornote','chat','cache'];
 
 function parseFlat(txt){
@@ -4410,6 +4424,10 @@ function parseFlat(txt){
   const buckets=[];let cur={kind:'pre',lines:[]};
   const flush=()=>{buckets.push(cur);};
   for(const ln of lines){
+    // Settings are one JSON line after their header; sections may still follow (e.g. one an AI appended)
+    if(cur.kind==='settings'&&!cur.lines.length){if(ln.trim())cur.lines.push(ln);continue;}
+    if(ln.trim()===FLAT_SETTINGS){flush();cur={kind:'settings',lines:[]};continue;}
+    if(cur.kind==='settings'&&!FLAT_HDR.test(ln)){continue;}
     const m=FLAT_HDR.exec(ln);
     if(m){
       flush();
@@ -4425,9 +4443,13 @@ function parseFlat(txt){
   flush();
   // Sections are joined with a blank line; drop it from each body
   buckets.forEach(b=>{if(b.lines.length&&b.lines[b.lines.length-1]==='')b.lines.pop();b.body=b.lines.join('\n');});
-  const res={panel:null,prompt:null,items:[]};
+  const res={panel:null,prompt:null,items:[],settings:null,settingsError:false};
   for(const b of buckets){
-    if(b.kind==='toggles')res.panel=b.body;
+    if(b.kind==='settings'){
+      try{const v=JSON.parse(b.body);if(v&&typeof v==='object'&&!Array.isArray(v))res.settings=v;else res.settingsError=true;}
+      catch(e){res.settingsError=true;}
+    }
+    else if(b.kind==='toggles')res.panel=b.body;
     else if(b.kind==='prompt')res.prompt=b.body;
     else if(b.kind==='item'){
       // Consecutive sections of one item (e.g. Author Note innerFormat + defaultText) merge
@@ -4459,15 +4481,13 @@ function newFlatItem(g){
   return it;
 }
 
-function importFlat(txt,fileName){
-  saveEdit();
-  const fp=parseFlat(txt);
-  if(!fp.items.length&&fp.prompt==null&&fp.panel==null)throw new Error('No flattened content found');
-  const orig=S.promptTemplate,used=new Map(),out=[];
+// Rebuild prompt items from the text sections, matched to the source items by index first,
+// then by type+name, so reordered or renamed sections keep their other settings.
+function flatItems(fp,orig){
+  const used=new Map(),out=[];
   let upd=0,add=0;
   const sameKind=(o,g)=>o.type===g.type&&(o.type2||'')===(g.type2||'');
   for(const g of fp.items){
-    // Match by index first, then by type+name, so reordered or renamed sections still find their source
     let k=g.idx<orig.length&&!used.has(g.idx)&&sameKind(orig[g.idx],g)?g.idx:-1;
     if(k<0)k=orig.findIndex((o,i)=>!used.has(i)&&sameKind(o,g)&&(o.name||'')===(g.name||''));
     const src=k>=0?orig[k]:null,it=src?{...src}:newFlatItem(g);
@@ -4491,6 +4511,30 @@ function importFlat(txt,fileName){
     }else add++;
     out.push(it);
   }
+  return {out,used,upd,add};
+}
+
+// A .txt from Export TXT carries the preset's settings, so it becomes the whole preset.
+// Older text files without that block are merged into the loaded preset instead (or, with
+// nothing loaded, become a preset with RisuAI's default settings).
+function importFlat(txt,fileName){
+  saveEdit();
+  const fp=parseFlat(txt);
+  if(!fp.items.length&&fp.prompt==null&&fp.panel==null)throw new Error('No exported text content found');
+  const fallbackName=fileName.replace(/\.txt$/i,'').replace(/_flat$/,'')||'Text Import';
+
+  if(fp.settings){
+    const base=fp.settings,{out}=flatItems(fp,Array.isArray(base.promptTemplate)?base.promptTemplate:[]);
+    const pr={...base,name:base.name||fallbackName};
+    if(out.length)pr.promptTemplate=out;else delete pr.promptTemplate;
+    if(fp.panel!=null)pr.customPromptTemplateToggle=fp.panel;
+    if(!fp.items.length&&fp.prompt!=null)pr.mainPrompt=fp.prompt;
+    if(confirmDiscard(pr.name))loadPreset(pr);
+    return;
+  }
+  const noSettings=fp.settingsError?'The preset settings block could not be read':'This text has no preset settings block';
+
+  const orig=S.promptTemplate,{out,used,upd,add}=flatItems(fp,orig);
   const removed=orig.length-used.size;
   // used is keyed in output order, so any decreasing original index means a reorder
   const moved=[...used.keys()].some((k,n,a)=>n>0&&a[n-1]>k);
@@ -4498,12 +4542,11 @@ function importFlat(txt,fileName){
   const promptChanged=fp.prompt!=null&&!fp.items.length&&fp.prompt!==ed.value;
 
   if(!S.preset){
-    // Nothing loaded: build a minimal preset from the flat file alone
-    const pr={name:fileName.replace(/\.txt$/i,'').replace(/_flat$/,'')||'Flat Import'};
+    const pr={name:fallbackName};
     if(out.length)pr.promptTemplate=out;
     if(fp.panel!=null)pr.customPromptTemplateToggle=fp.panel;
     if(!out.length&&fp.prompt!=null)pr.mainPrompt=fp.prompt;
-    if(confirmDiscard(pr.name))loadPreset(pr);
+    if(confirmDiscard(pr.name)){loadPreset(pr);toast(noSettings+', so other settings use RisuAI defaults',true);}
     return;
   }
 
@@ -4516,7 +4559,7 @@ function importFlat(txt,fileName){
   if(promptChanged)summary.push('editor text replaced');
   if(panelChanged)summary.push('custom toggles replaced');
   const warnRm=removed?'\n\n'+removed+' item(s) in the current preset are missing from the file and will be removed.':'';
-  if(!confirm('Apply "'+fileName+'" to "'+S.presetName+'"?\n\n'+summary.join(', ')+'.'+warnRm))return;
+  if(!confirm(noSettings+'. Apply its text to the loaded preset "'+S.presetName+'"?\n\n'+summary.join(', ')+'.'+warnRm))return;
 
   const activeTo=S.activeIdx>=0&&used.has(S.activeIdx)?used.get(S.activeIdx):-1;
   if(fp.items.length){S.promptTemplate=out;S.preset.promptTemplate=out;}
@@ -4533,7 +4576,7 @@ function importFlat(txt,fileName){
   crumb();update();renderNav();
   if(S.bTab==='panel')renderPanel();
   markDirty();
-  toast('Applied flat file: '+summary.join(', '));
+  toast('Applied text: '+summary.join(', '));
 }
 
 // Build the full reconstructed prompt: every editable item parsed and joined,
@@ -4561,7 +4604,7 @@ function openFullModal(){
 }
 function closeFullModal(){ _('fullModal').style.display='none'; }
 // Unexported edits: warn on tab close, and confirm before another preset replaces them.
-// Set on any content edit; cleared by load, Export and Flatten (the flat .txt round-trips).
+// Set on any content edit; cleared by load, Export and Export TXT (the .txt round-trips).
 function markDirty(){S.dirty=true;}
 window.addEventListener('beforeunload',e=>{if(S.dirty){e.preventDefault();e.returnValue='';}});
 function confirmDiscard(next){
@@ -4590,19 +4633,11 @@ _('bExp').addEventListener('click',async()=>{
   catch(err){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),(S.presetName||'preset')+'_edited.json');toast('Saved as JSON instead: '+err.message,true);console.error(err);}
 });
 
-_('bUnflat').addEventListener('click',()=>_('fFlat').click());
-_('fFlat').addEventListener('change',async e=>{
-  const f=e.target.files[0];if(!f)return;
-  try{importFlat(await f.text(),f.name);}
-  catch(err){toast('Unflatten failed: '+err.message,true);console.error(err);}
-  e.target.value='';
-});
-
 _('bFlat').addEventListener('click',()=>{
   const txt=flattenPreset();
   downloadBlob(new TextEncoder().encode(txt),(S.presetName||'preset')+'_flat.txt');
   S.dirty=false;
-  toast('Flattened to .txt');
+  toast('Exported .txt');
 });
 
 // ============================================================

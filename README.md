@@ -13,9 +13,9 @@ A browser-based editor for [RisuAI](https://risuai.net) Curly Braces Syntax (CBS
 - **Typo detection** for single curly braces near CBS keywords and stray `}}` without a matching `{{`
 
 ### Preset I/O
-- **Import/Export** supporting `.risup`, `.risupreset`, and `.json` formats with full round-trip preservation
-- **Flatten export** outputs the entire preset as a labeled `.txt` with raw CBS preserved, including the Custom Toggles source at the top
-- **Unflatten import** reads a flattened `.txt` back in (also accepted by **Import**). Edit the text, reorder sections, or add new `--- [n] TYPE ... ---` sections, and the changes are merged into the loaded preset. All other preset settings are kept. Before applying, you get a summary of updated, added, and removed items. With no preset loaded, a minimal preset is built from the file
+- **Import/Export** supporting `.risup`, `.risupreset`, and `.json` formats with full round-trip preservation; **Export** saves `.risup`
+- **Export TXT** saves the whole preset as an editable `.txt`: the Custom Toggles source, each prompt item as a labeled section with raw CBS, and a final block with the preset's other settings. **Import** that `.txt` (after editing it yourself or with an AI) and it becomes the full preset again. Edited, reordered, renamed and newly added `--- [n] TYPE ... ---` sections all come through
+- Text files without the settings block (from older versions) are merged into the loaded preset after a summary of updated, added and removed items, or, with nothing loaded, become a preset with RisuAI's default settings
 - **Typed prompt slot editing** for Persona, Description, Lorebook, Author Note, Memory, and Post Everything (edits the `innerFormat` field; Author Note also exposes `defaultText` via a field switcher)
 
 ### Control Panel
@@ -42,8 +42,8 @@ Open `index.html` in any modern browser. No server, build step, or installation 
 3. Click any item to load it in the editor
 4. Adjust toggles in the **Panel** tab to see how CBS conditionals resolve in real time. Values in the **Vars** tab act as the preset's default variables (what `{{getvar}}` returns when a variable hasn't been set)
 5. Open the **CBS Reference** drawer for searchable documentation on every supported function and block
-6. Click **Export** to save changes back to `.risup`/`.risupreset`/`.json`, or **Flatten** to produce a parseable text snapshot
-7. To bring an edited flat file back (for example, after refining it with an AI), load the original preset, then click **Unflatten** and pick the `.txt`. Keep the `--- [n] ... ---` header lines intact, because they are how sections are matched back to prompt items
+6. Click **Export** to save the preset as `.risup`, or **Export TXT** to get an editable text version
+7. To bring an edited `.txt` back (for example, after refining it with an AI), just **Import** it. Keep the `--- [n] ... ---` header lines and the `=== PRESET SETTINGS ===` block intact: the headers match sections back to prompt items, and the settings block restores everything else
 
 ## CBS Syntax Reference
 
