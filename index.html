@@ -6,8 +6,9 @@
 <title>CBS Editor - RisuAI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fflate/umd/index.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack/dist.es5+umd/msgpack.min.js"></script>
+<!-- Pinned: unversioned jsDelivr URLs follow "latest", and msgpack 3.x dropped dist.es5+umd/ -->
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.3/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack@2.8.0/dist.es5+umd/msgpack.min.js"></script>
 <style>
 :root{--fs:13px;--pfs:13px;--us:1;
   --uxs:calc(8px * var(--us));
@@ -928,8 +929,15 @@ async function risuDecrypt(data, keyStr) {
 // ============================================================
 // Preset Import/Export
 // ============================================================
+// .risup/.risupreset need the CDN libraries; fail with a clear message if they didn't load
+function needLibs() {
+  if (typeof fflate === 'undefined' || typeof MessagePack === 'undefined')
+    throw new Error('compression libraries failed to load (check your connection and reload)');
+}
+
 async function importRisuPreset(arrayBuf, fileName) {
   let data = new Uint8Array(arrayBuf);
+  fileName = fileName.toLowerCase();
 
   // .risup: rpack decode first
   if (fileName.endsWith('.risup')) {
@@ -943,6 +951,7 @@ async function importRisuPreset(arrayBuf, fileName) {
   }
 
   // .risupreset or .risup: fflate decompress -> msgpack decode -> decrypt -> msgpack decode
+  needLibs();
   const decompressed = fflate.decompressSync(data);
   const outer = MessagePack.decode(decompressed);
 
@@ -963,6 +972,7 @@ async function exportRisuPreset(preset, format) {
   }
 
   // .risup format: msgpack encode -> encrypt -> msgpack encode outer -> fflate compress -> rpack encode
+  needLibs();
   const innerPacked = MessagePack.encode(preset);
   const encrypted = await risuEncrypt(innerPacked, 'risupreset');
   const outerObj = { presetVersion: 2, type: 'preset', preset: encrypted };
@@ -1494,7 +1504,7 @@ _('bExp').addEventListener('click',async()=>{
   const p=buildExport();
   if(!S.preset){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),'cbs_export.json');toast('Exported JSON');return;}
   try{const{data,ext}=await exportRisuPreset(p,'risup');downloadBlob(data,(S.presetName||'preset')+'_edited'+ext);toast('Exported '+ext);}
-  catch(err){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),(S.presetName||'preset')+'_edited.json');toast('JSON fallback',true);}
+  catch(err){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),(S.presetName||'preset')+'_edited.json');toast('Saved as JSON instead: '+err.message,true);console.error(err);}
 });
 
 _('bUnflat').addEventListener('click',()=>_('fFlat').click());
