@@ -245,7 +245,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 <div class="app">
   <div class="hdr nosel">
     <button class="hb p" id="bSide" title="Toggle sidebar">&#9776;</button>
-    <div class="htitle">CBS Editor <span>v6.3</span></div>
+    <div class="htitle">CBS Editor <span>v6.4</span></div>
     <div class="hsep"></div>
     <button class="hb" id="bImp">Import</button>
     <button class="hb g" id="bExp">Export</button>
@@ -1075,7 +1075,7 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{//::CBS Editor v6.3}}';
+ed.value='{{//::CBS Editor v6.4}}';
 
 let toastT;
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.className='toast',2500);}
@@ -1858,15 +1858,16 @@ const REF_DATA = [
     desc: 'Conditional block. The condition must resolve to literal "true" or "1" to render the contents. Trims leading/trailing whitespace from the content.',
     examples: [
       {code: '{{#if {{? {{getvar::hp}}>0}} }}Alive{{/if}}'},
-      {code: '{{#if {{equal::{{getvar::lang}}::ko}} }}안녕{{:else}}Hello{{/if}}'}
+      {code: '{{#if {{equal::{{getvar::lang}}::ko}} }}안녕{{/if}}'}
     ],
-    note: 'Inner CBS resolves first, then #if evaluates the result. Use {{? expr}} for comparisons.' },
+    note: 'Inner CBS resolves first, then #if evaluates the result. Use {{? expr}} for comparisons. #if has no else branch: {{:else}} only works inside {{#when}}.' },
   { cat: 'Conditional Blocks', name: '{{#if_pure}}', sig: '{{#if_pure condition}}...{{/if}}',
     desc: 'Same as {{#if}} but does NOT trim whitespace from the contents. Useful when leading/trailing newlines matter.',
     examples: [{code: '{{#if_pure {{getglobalvar::toggle_seq}} }}\n- Sequence Log\n{{/if}}'}] },
   { cat: 'Conditional Blocks', name: '{{:else}}', sig: '{{:else}}',
-    desc: 'Else branch inside #if, #if_pure, or #when blocks. Renders when the condition is falsy.',
-    examples: [{code: '{{#if {{? {{getvar::hp}}>0}} }}Alive{{:else}}Defeated{{/if}}'}] },
+    desc: 'Else branch inside a #when block. Renders when the condition is falsy. Not supported in #if / #if_pure, where it is left in the output as literal text.',
+    examples: [{code: '{{#when::{{getvar::hp}}::>::0}}Alive{{:else}}Defeated{{/when}}'}],
+    note: 'In a multi-line #when, {{:else}} must sit on its own line. It does not work with the legacy operator.' },
   { cat: 'Conditional Blocks', name: '{{#when}}', sig: '{{#when::value::op::compare}}...{{/when}}',
     desc: 'Versatile conditional with many operators. Supports both {{#when expr}} (space form) and {{#when::a::op::b}} (operator form).',
     examples: [
@@ -1895,21 +1896,26 @@ const REF_DATA = [
 
   // ============ STRUCTURAL BLOCKS ============
   { cat: 'Structural Blocks', name: '{{#each}}', sig: '{{#each array as item}}...{{/each}}',
-    desc: 'Iterates over an array. Inside the block, the variable name (after "as") holds the current item. Use {{arrayelement}} or array index inline.',
-    examples: [{code: '{{#each {{makearray::a::b::c}} as x}}- {{getvar::x}}\n{{/each}}', out: '- a\n- b\n- c\n'}],
-    note: '"as varname" required since the January 2026 RisuAI update.' },
+    desc: 'Iterates over an array. Inside the block, {{slot::name}} is replaced by the current item, where name is the word after "as".',
+    examples: [{code: '{{#each {{makearray::a::b::c}} as x}}[{{slot::x}}]{{/each}}', out: '[a][b][c]'}],
+    note: 'The block body is trimmed before repeating, so newlines at its edges are dropped; use {{#each::keep ...}} to keep them. Prefer the "as name" form; the older {{#each array name}} form is still accepted.' },
   { cat: 'Structural Blocks', name: '{{#pure}}', sig: '{{#pure}}...{{/pure}}',
     desc: 'Prevents CBS parsing within the block. Use to show literal CBS in output (e.g., documentation, examples).',
+    note: 'Deprecated in RisuAI in favour of {{#puredisplay}}.',
     examples: [{code: '{{#pure}}{{getvar::x}}{{/pure}}', out: '{{getvar::x}}'}] },
   { cat: 'Structural Blocks', name: '{{#puredisplay}}', aliases: ['pure_display'], sig: '{{#puredisplay}}...{{/puredisplay}}',
-    desc: 'Like #pure but renders only in display, stripped from prompts sent to the model.' },
+    desc: 'Displays the content without any CBS processing. Useful for raw HTML or for showing CBS syntax literally. Replaces the deprecated #pure.',
+    examples: [{code: '{{#puredisplay}}{{getvar::x}}{{/puredisplay}}', out: '{{getvar::x}}'}],
+    note: 'Braces are passed through escaped, so this preview shows \\{\\{getvar::x\\}\\}. RisuAI displays them as plain {{ }}.' },
   { cat: 'Structural Blocks', name: '{{#escape}}', sig: '{{#escape}}...{{/escape}}',
     desc: 'Escapes special characters (curly braces, etc.) within the block.' },
   { cat: 'Structural Blocks', name: '{{#code}}', sig: '{{#code}}...{{/code}}',
-    desc: 'Marks content as code; affects display rendering. Does not execute or parse CBS inside.' },
-  { cat: 'Structural Blocks', name: '{{#func}}', sig: '{{#func name(args)}}body{{/func}}',
-    desc: 'Defines a reusable function. Call later via {{name::arg1::arg2}}.',
-    examples: [{code: '{{#func greet(who)}}Hello, {{getvar::who}}!{{/func}}{{greet::world}}', out: 'Hello, world!'}] },
+    desc: 'Parses the CBS inside, then removes all newlines and tabs, so a block written across many lines comes out as one line.',
+    examples: [{code: '{{#code}}\n{{char}}\n is here\n{{/code}}', out: 'CharacterName is here'}],
+    note: 'RisuAI also decodes escapes such as \\n and \\uXXXX inside #code. The editor preview does not do this yet.' },
+  { cat: 'Structural Blocks', name: '{{#func}}', sig: '{{#func name}}body{{/func}} ... {{call::name::arg1::arg2}}',
+    desc: 'Defines a reusable block. Run it with {{call::name::...}}: inside the body, {{arg::1}}, {{arg::2}}, ... are replaced by the call arguments ({{arg::0}} is the function name). The definition itself outputs nothing.',
+    examples: [{code: '{{#func greet}}Hello, {{arg::1}}!{{/func}}{{call::greet::world}}', out: 'Hello, world!'}] },
 
   // ============ CALC EXPRESSIONS ============
   { cat: 'Calc Expressions', name: '{{? ...}}', sig: '{{? expression}}',
@@ -2126,7 +2132,7 @@ const REF_DATA = [
     desc: 'Outputs literal ";".' },
   { cat: 'Escape', name: '{{br}}', aliases: ['newline'], sig: '{{br::n}}',
     desc: 'Inserts n newlines (default 1).',
-    examples: [{code: 'Line 1{{br}}Line 2', out: 'Line 1\\nLine 2'}] },
+    examples: [{code: 'Line 1{{br}}Line 2', out: 'Line 1\nLine 2'}] },
   { cat: 'Escape', name: '{{cbr}}', aliases: ['cnl','cnewline'], sig: '{{cbr::n}}',
     desc: 'Inserts n newlines, but in a context that survives certain CSS/rendering whitespace collapsing.' },
   { cat: 'Escape', name: '{{blank}}', sig: '{{blank}}',
