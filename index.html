@@ -20,9 +20,8 @@
   --bg0:#0e0f14;--bg1:#13141a;--bg2:#1a1b24;--border:#2a2d3a;--border2:#3a3d4a;
   --fg:#c8ccd4;--fg2:#5c6370;--fg3:#3a3d4a;--accent:#61afef;--ok:#98c379;--err:#e06c75;--warn:#e5c07b;--purple:#c678dd;--cyan:#56b6c2;--orange:#d19a66;--muted:#abb2bf;
   --caret:#61afef;--diag-bg:#1c1012;--diag-border:#3a2020;
-  /* Syntax: block depth colors */
-  --cb0:#c678dd;--cb0a:#b060c8;--cb1:#e5c07b;--cb1a:#d4a84a;--cb2:#56b6c2;--cb2a:#3a9daa;
-  --cb3:#d19a66;--cb3a:#b87d45;--cb4:#98c379;--cb4a:#7aaa58;--cb5:#e06c75;--cb5a:#c24e5a;
+  /* Syntax: block depth colors (hues chosen so neighboring depths never look alike) */
+  --cb0:#c678dd;--cb1:#e5c07b;--cb2:#56b6c2;--cb3:#ff7eb6;--cb4:#98c379;--cb5:#f0915a;--cb-chip:22%;
   /* Syntax: type badge backgrounds */
   --badge-plain-bg:#2a3a2a;--badge-jb-bg:#3a2a2a;--badge-cot-bg:#3a3a2a;--badge-persona-bg:#2a2a3a;
   --badge-desc-bg:#2a3a3a;--badge-lore-bg:#3a2a3a;--badge-other-bg:#2a2d3a;--badge-an-bg:#3a3a2a;
@@ -34,8 +33,7 @@
   --bg0:#ffffff;--bg1:#f5f6f8;--bg2:#ebedf0;--border:#d0d3da;--border2:#b8bcc5;
   --fg:#1e2028;--fg2:#6b7280;--fg3:#b0b5c0;--accent:#2563eb;--ok:#16a34a;--err:#dc2626;--warn:#d97706;--purple:#7c3aed;--cyan:#0891b2;--orange:#c2410c;--muted:#4b5563;
   --caret:#2563eb;--diag-bg:#fef2f2;--diag-border:#fecaca;
-  --cb0:#7c3aed;--cb0a:#6d28d9;--cb1:#d97706;--cb1a:#b45309;--cb2:#0891b2;--cb2a:#0e7490;
-  --cb3:#c2410c;--cb3a:#9a3412;--cb4:#16a34a;--cb4a:#15803d;--cb5:#dc2626;--cb5a:#b91c1c;
+  --cb0:#7c3aed;--cb1:#b45309;--cb2:#0891b2;--cb3:#db2777;--cb4:#16a34a;--cb5:#ea580c;--cb-chip:16%;
   --badge-plain-bg:#dcfce7;--badge-jb-bg:#fee2e2;--badge-cot-bg:#fef9c3;--badge-persona-bg:#dbeafe;
   --badge-desc-bg:#ccfbf1;--badge-lore-bg:#f3e8ff;--badge-other-bg:#f3f4f6;--badge-an-bg:#fef9c3;
   --toggle-bg:#d0d3da;--toggle-on:#2563eb;--toggle-dot:#ffffff;
@@ -218,13 +216,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .ik{color:var(--warn)}.iv{color:var(--ok)}
 
 .ce{color:var(--accent)}.cv{color:var(--warn)}.cm{color:var(--ok)}.cn{color:var(--err);font-weight:600}.cc{color:var(--fg2);font-style:italic}
-/* Block depth colors (rotating palette, with alt shades for consecutive same-level blocks) */
-.cb0{color:var(--purple);font-weight:600}.cb0a{color:var(--cb0a);font-weight:600}
-.cb1{color:var(--warn);font-weight:600}.cb1a{color:var(--cb1a);font-weight:600}
-.cb2{color:var(--cyan);font-weight:600}.cb2a{color:var(--cb2a);font-weight:600}
-.cb3{color:var(--orange);font-weight:600}.cb3a{color:var(--cb3a);font-weight:600}
-.cb4{color:var(--ok);font-weight:600}.cb4a{color:var(--cb4a);font-weight:600}
-.cb5{color:var(--err);font-weight:600}.cb5a{color:var(--cb5a);font-weight:600}
+/* Block depth colors (rotating palette). Consecutive same-level blocks alternate between
+   plain text and a tinted chip of the same hue, so siblings never blend into each other. */
+.cb0,.cb0a{--cbc:var(--cb0)}.cb1,.cb1a{--cbc:var(--cb1)}.cb2,.cb2a{--cbc:var(--cb2)}
+.cb3,.cb3a{--cbc:var(--cb3)}.cb4,.cb4a{--cbc:var(--cb4)}.cb5,.cb5a{--cbc:var(--cb5)}
+.cb0,.cb1,.cb2,.cb3,.cb4,.cb5,.cb0a,.cb1a,.cb2a,.cb3a,.cb4a,.cb5a{color:var(--cbc);font-weight:600;border-radius:2px}
+.cb0a,.cb1a,.cb2a,.cb3a,.cb4a,.cb5a{background:color-mix(in srgb,var(--cbc) var(--cb-chip),transparent)}
+/* Block under the caret: its tags get an outline, its extent gets a thin box (outline/absolute box never shift layout) */
+.ehigh .cbs-cur{outline:1px solid var(--cbc);background:color-mix(in srgb,var(--cbc) calc(var(--cb-chip) + 12%),transparent)}
+.ehigh .blk-box{position:absolute;pointer-events:none;z-index:-1;border:1px solid color-mix(in srgb,var(--cbc) 70%,transparent);background:color-mix(in srgb,var(--cbc) 5%,transparent);border-radius:3px}
+.ehigh .blk-box.unclosed{border-style:dashed;--cbc:var(--err)}
 .cb-err{color:var(--err);font-weight:700;text-decoration:wavy underline var(--err);text-underline-offset:3px}
 .cbs-warn{color:var(--orange);background:var(--warn-syntax-bg);border-radius:2px}
 .ehigh .ca{background:var(--active-bg);border-radius:2px}
@@ -248,12 +249,14 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 <div class="app">
   <div class="hdr nosel">
     <button class="hb p" id="bSide" title="Toggle sidebar">&#9776;</button>
-    <div class="htitle">CBS Editor <span>v6.2</span></div>
+    <div class="htitle">CBS Editor <span>v6.3</span></div>
     <div class="hsep"></div>
     <button class="hb" id="bImp">Import</button>
     <button class="hb g" id="bExp">Export</button>
     <button class="hb" id="bFlat" title="Export flattened text">Flatten</button>
-    <input type="file" id="fIn" accept=".json,.risupreset,.risup,.preset" style="display:none">
+    <button class="hb" id="bUnflat" title="Import a flattened .txt back into the preset">Unflatten</button>
+    <input type="file" id="fIn" accept=".json,.risupreset,.risup,.preset,.txt" style="display:none">
+    <input type="file" id="fFlat" accept=".txt,text/plain" style="display:none">
     <div class="hsep"></div>
     <span class="hl">{{char}}</span>
     <input class="hi" id="cN" value="CHAR">
@@ -745,10 +748,19 @@ function analyzeActiveRuns(template, cfg){
   return flags;
 }
 
-function highlightCBS(text, activeFlags) {
+// Innermost block whose tags enclose the caret (caret strictly inside the open..close span).
+function findActiveBlock(blocks, caret) {
+  let best = null;
+  for (const b of blocks) if (b.start < caret && caret < b.cEnd && (!best || b.start > best.start)) best = b;
+  return best;
+}
+
+function highlightCBS(text, activeFlags, caret) {
   const parts = []; let i = 0;
   let blockDepth = 0;
   const openStack = [];
+  // Closed blocks with source ranges and the parts[] index of each tag (for caret emphasis)
+  const blocks = [];
   // Track alternating index per depth level
   const depthCounter = {};
   let lineNum = 1;
@@ -772,21 +784,22 @@ function highlightCBS(text, activeFlags) {
         if (!depthCounter[blockDepth]) depthCounter[blockDepth] = 0;
         const alt = depthCounter[blockDepth] % 2 === 1 ? 'a' : '';
         cls = DEPTH_COLORS[blockDepth % DEPTH_COLORS.length] + alt;
-        openStack.push({ tag: inner.split(/[\s:]/)[0], line: lineNum, depth: blockDepth, alt: alt });
+        openStack.push({ tag: inner.split(/[\s:]/)[0], line: lineNum, depth: blockDepth, alt: alt, cls: cls, start: i, end: j, part: parts.length, mids: [] });
         depthCounter[blockDepth]++;
         blockDepth++;
       } else if (BLOCK_CLOSE.test(inner) && !inner.startsWith('//')) {
         blockDepth = Math.max(0, blockDepth - 1);
         if (openStack.length > 0) {
           const matched = openStack.pop();
-          cls = DEPTH_COLORS[matched.depth % DEPTH_COLORS.length] + matched.alt;
+          cls = matched.cls;
+          blocks.push(Object.assign(matched, { cStart: i, cEnd: j, cPart: parts.length }));
         } else {
           cls = 'cb-err';
         }
       } else if (BLOCK_MID.test(inner)) {
-        cls = openStack.length > 0
-          ? DEPTH_COLORS[openStack[openStack.length-1].depth % DEPTH_COLORS.length] + openStack[openStack.length-1].alt
-          : 'cb0';
+        const top = openStack[openStack.length-1];
+        cls = top ? top.cls : 'cb0';
+        if (top) top.mids.push({ start: i, end: j, part: parts.length });
       } else if (inner.startsWith('setvar') || inner.startsWith('getvar') || inner.startsWith('getglobalvar') || inner.startsWith('addvar') || inner.startsWith('settempvar') || inner.startsWith('tempvar') || inner.startsWith('setdefault') || inner.startsWith('slot')) {
         cls = 'cv';
       } else if (inner.startsWith('calc') || inner.startsWith('? ') || inner.startsWith('round') || inner.startsWith('floor') || inner.startsWith('ceil') || inner.startsWith('greater') || inner.startsWith('less') || inner.startsWith('equal') || inner.startsWith('notequal')) {
@@ -854,9 +867,23 @@ function highlightCBS(text, activeFlags) {
   }
 
   highlightCBS._diag = openStack.map(b => ({ tag: b.tag, line: b.line }));
+  // Unclosed blocks run to the end of the text
+  openStack.forEach(b => blocks.push(Object.assign(b, { cStart: -1, cEnd: text.length + 1, cPart: -1 })));
+  highlightCBS._blocks = blocks;
+  const ab = caret == null ? null : findActiveBlock(blocks, caret);
+  highlightCBS._active = ab;
+  if (ab) {
+    // Re-emit the active block's tags with emphasis, plus zero-width markers used to place the box
+    const tag = (s, e) => '<span class="' + ab.cls + ' cbs-cur">' + escH(text.substring(s, e)) + '</span>';
+    const mk = w => '<span class="blk-mk" data-mk="' + w + '"></span>';
+    parts[ab.part] = mk('s') + tag(ab.start, ab.end);
+    ab.mids.forEach(m => { parts[m.part] = tag(m.start, m.end); });
+    if (ab.cPart >= 0) parts[ab.cPart] = tag(ab.cStart, ab.cEnd) + mk('e');
+    else parts.push(mk('e'));
+  }
   return parts.join('');
 }
-highlightCBS._diag = [];
+highlightCBS._diag = []; highlightCBS._blocks = []; highlightCBS._active = null;
 function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 
 // RPack: Simple byte substitution (from RisuAI source)
@@ -1048,7 +1075,7 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{//::CBS Editor v6.2}}';
+ed.value='{{//::CBS Editor v6.3}}';
 
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');setTimeout(()=>toastEl.className='toast',2500);}
 function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;}
@@ -1116,13 +1143,44 @@ function renderPreviewContext(){
 
 function syncScroll(){ hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; }
 
-function renderHighlight(){
-  let flags=null;
-  if(S.showActive){
-    try{ flags=analyzeActiveRuns(ed.value,{charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed}); }
-    catch(e){ flags=null; }
+// Live analysis runs a full parse; cache it so caret-only re-renders stay cheap.
+let _liveKey=null,_liveFlags=null;
+function liveFlags(){
+  const cfg={charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed};
+  const key=ed.value+'\u0000'+JSON.stringify(cfg);
+  if(key!==_liveKey){
+    try{ _liveFlags=analyzeActiveRuns(ed.value,cfg); }
+    catch(e){ _liveFlags=null; }
+    _liveKey=key;
   }
-  hl.innerHTML=highlightCBS(ed.value,flags)+'\n';
+  return _liveFlags;
+}
+
+// Thin box around the block enclosing the caret, positioned from the markers highlightCBS emits.
+function drawBlockBox(){
+  const ab=highlightCBS._active;if(!ab)return;
+  const s=hl.querySelector('[data-mk="s"]'),e=hl.querySelector('[data-mk="e"]');if(!s||!e)return;
+  const cs=getComputedStyle(hl),lh=parseFloat(cs.lineHeight)||20;
+  const lineTop=el=>el.offsetTop-(lh-el.offsetHeight)/2;
+  const st=lineTop(s),et=lineTop(e);
+  const box=document.createElement('div');
+  box.className='blk-box'+(ab.cPart<0?' unclosed':'');
+  if(ab.cPart>=0)box.style.setProperty('--cbc','var(--'+ab.cls.replace(/a$/,'')+')');
+  let left,width;
+  if(Math.abs(et-st)<lh/2){ left=s.offsetLeft-3; width=e.offsetLeft-s.offsetLeft+6; }
+  else{
+    const pl=parseFloat(cs.paddingLeft),pr=parseFloat(cs.paddingRight);
+    left=pl-6; width=hl.clientWidth-pl-pr+12;
+  }
+  box.style.left=left+'px';box.style.width=width+'px';
+  box.style.top=(st-1)+'px';box.style.height=(et-st+lh+2)+'px';
+  hl.appendChild(box);
+}
+
+function renderHighlight(){
+  const flags=S.showActive?liveFlags():null;
+  hl.innerHTML=highlightCBS(ed.value,flags,ed.selectionStart)+'\n';
+  drawBlockBox();
   syncScroll();
   // Diagnostics depend on highlight pass, update them here
   const diag = highlightCBS._diag || [];
@@ -1235,9 +1293,9 @@ function flattenPreset(){
   saveEdit();
   const parts=[];
   if(S.panelText&&S.panelText.trim()){
-    parts.push('=== CUSTOM TOGGLES ===\n'+S.panelText.trim());
+    parts.push(FLAT_TOGGLES+'\n'+S.panelText.trim());
   }
-  if(!S.promptTemplate.length){parts.push(ed.value);return parts.join('\n\n');}
+  if(!S.promptTemplate.length){parts.push(FLAT_PROMPT+'\n'+ed.value);return parts.join('\n\n');}
   S.promptTemplate.forEach((it,i)=>{
     const baseLabel='['+i+'] '+it.type.toUpperCase()+(it.type2?' ('+it.type2+')':'')+(it.role?' ['+it.role+']':'')+(it.name?' "'+it.name+'"':'');
     if(isEd(it)){
@@ -1256,6 +1314,145 @@ function flattenPreset(){
     }
   });
   return parts.join('\n\n');
+}
+
+// ============================================================
+// Flat import: turn a Flatten .txt (possibly edited elsewhere) back into the preset
+// ============================================================
+const FLAT_TOGGLES='=== CUSTOM TOGGLES ===', FLAT_PROMPT='=== PROMPT ===';
+// Mirrors the label built in flattenPreset: [i] TYPE (type2) [role] "name" (field)
+const FLAT_HDR=/^--- \[(\d+)\] ([A-Za-z0-9_]+)(?: \(([^)]*)\))?(?: \[([^\]]*)\])?(?: "(.*)")?(?: \((text|innerFormat|defaultText)\))? ---$/;
+// Flatten upper-cases the type; map it back to RisuAI's casing
+const KNOWN_TYPES=['plain','jailbreak','cot','chatML','persona','description','lorebook','postEverything','memory','authornote','chat','cache'];
+
+function parseFlat(txt){
+  const lines=txt.replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').split('\n');
+  const buckets=[];let cur={kind:'pre',lines:[]};
+  const flush=()=>{buckets.push(cur);};
+  for(const ln of lines){
+    const m=FLAT_HDR.exec(ln);
+    if(m){
+      flush();
+      const type=KNOWN_TYPES.find(t=>t.toLowerCase()===m[2].toLowerCase())||m[2].toLowerCase();
+      let type2=m[3],field=m[6];
+      // "(innerFormat)" on a multi-field item with no type2 lands in the type2 slot
+      if(!field&&type==='authornote'&&/^(innerFormat|defaultText)$/.test(type2||'')&&m[4]==null&&m[5]==null){field=type2;type2=undefined;}
+      cur={kind:'item',idx:parseInt(m[1]),type,type2,role:m[4],name:m[5],field,lines:[]};
+    }else if(!buckets.some(b=>b.kind==='item')&&cur.kind!=='item'&&(ln.trim()===FLAT_TOGGLES||ln.trim()===FLAT_PROMPT)){
+      flush();cur={kind:ln.trim()===FLAT_TOGGLES?'toggles':'prompt',lines:[]};
+    }else cur.lines.push(ln);
+  }
+  flush();
+  // Sections are joined with a blank line; drop it from each body
+  buckets.forEach(b=>{if(b.lines.length&&b.lines[b.lines.length-1]==='')b.lines.pop();b.body=b.lines.join('\n');});
+  const res={panel:null,prompt:null,items:[]};
+  for(const b of buckets){
+    if(b.kind==='toggles')res.panel=b.body;
+    else if(b.kind==='prompt')res.prompt=b.body;
+    else if(b.kind==='item'){
+      // Consecutive sections of one item (e.g. Author Note innerFormat + defaultText) merge
+      const last=res.items[res.items.length-1];
+      if(last&&last.idx===b.idx&&last.type===b.type&&last.name===b.name&&b.field&&!(b.field in last.fields)){last.fields[b.field]=b.body;continue;}
+      res.items.push({idx:b.idx,type:b.type,type2:b.type2,role:b.role,name:b.name,fields:{[b.field||'']:b.body}});
+    }
+  }
+  const pre=buckets.find(b=>b.kind==='pre');
+  if(!res.items.length&&res.prompt==null){
+    // Older flatten files have no PROMPT header: free text follows the toggles after a blank line
+    if(res.panel!=null&&!pre.body.trim()){
+      const k=res.panel.indexOf('\n\n');
+      if(k!==-1){res.prompt=res.panel.substring(k+2);res.panel=res.panel.substring(0,k);}
+    }else if(pre.body.trim())res.prompt=pre.body;
+  }
+  return res;
+}
+
+function newFlatItem(g){
+  const it={type:g.type};
+  if(g.type2)it.type2=g.type2;else if(g.type==='plain')it.type2='normal';
+  if(g.role)it.role=g.role;else if(['plain','jailbreak','cot'].includes(g.type))it.role='system';
+  if(g.name)it.name=g.name;
+  if(g.type==='chat'){
+    const m=/^\[Chat \[(-?\d*)~(-?\d*)\]\]$/.exec((g.fields['']||'').trim());
+    it.rangeStart=m&&m[1]!==''?parseInt(m[1]):0;it.rangeEnd=m&&m[2]!==''?parseInt(m[2]):'end';
+  }
+  return it;
+}
+
+function importFlat(txt,fileName){
+  saveEdit();
+  const fp=parseFlat(txt);
+  if(!fp.items.length&&fp.prompt==null&&fp.panel==null)throw new Error('No flattened content found');
+  const orig=S.promptTemplate,used=new Map(),out=[];
+  let upd=0,add=0;
+  const sameKind=(o,g)=>o.type===g.type&&(o.type2||'')===(g.type2||'');
+  for(const g of fp.items){
+    // Match by index first, then by type+name, so reordered or renamed sections still find their source
+    let k=g.idx<orig.length&&!used.has(g.idx)&&sameKind(orig[g.idx],g)?g.idx:-1;
+    if(k<0)k=orig.findIndex((o,i)=>!used.has(i)&&sameKind(o,g)&&(o.name||'')===(g.name||''));
+    const src=k>=0?orig[k]:null,it=src?{...src}:newFlatItem(g);
+    if(src)used.set(k,out.length);
+    let changed=false;
+    if(isEd(it)){
+      const fs=itFields(it),placeholder='['+pLabel(src||it)+']';
+      for(const[f,body]of Object.entries(g.fields)){
+        const field=f||fs[0];if(!fs.includes(field))continue;
+        const old=it[field]||'';
+        if(!old&&body.trim()===placeholder)continue;
+        // Trailing whitespace is ambiguous after the blank-line join; keep the original when that's all that differs
+        if(body.trimEnd()===old.trimEnd())continue;
+        it[field]=body;changed=true;
+      }
+    }
+    if(src){
+      if(g.name&&g.name!==src.name){it.name=g.name;changed=true;}
+      if(g.role&&g.role!==src.role){it.role=g.role;changed=true;}
+      if(changed)upd++;
+    }else add++;
+    out.push(it);
+  }
+  const removed=orig.length-used.size;
+  // used is keyed in output order, so any decreasing original index means a reorder
+  const moved=[...used.keys()].some((k,n,a)=>n>0&&a[n-1]>k);
+  const panelChanged=fp.panel!=null&&fp.panel.trim()!==(S.panelText||'').trim();
+  const promptChanged=fp.prompt!=null&&!fp.items.length&&fp.prompt!==ed.value;
+
+  if(!S.preset){
+    // Nothing loaded: build a minimal preset from the flat file alone
+    const pr={name:fileName.replace(/\.txt$/i,'').replace(/_flat$/,'')||'Flat Import'};
+    if(out.length)pr.promptTemplate=out;
+    if(fp.panel!=null)pr.customPromptTemplateToggle=fp.panel;
+    if(!out.length&&fp.prompt!=null)pr.mainPrompt=fp.prompt;
+    loadPreset(pr);
+    return;
+  }
+
+  if(!upd&&!add&&!removed&&!moved&&!panelChanged&&!promptChanged){toast('No changes found in '+fileName);return;}
+  const summary=[];
+  if(fp.items.length){
+    summary.push(upd+' item(s) updated',add+' added',removed+' removed');
+    if(moved)summary.push('order changed');
+  }
+  if(promptChanged)summary.push('editor text replaced');
+  if(panelChanged)summary.push('custom toggles replaced');
+  const warnRm=removed?'\n\n'+removed+' item(s) in the current preset are missing from the file and will be removed.':'';
+  if(!confirm('Apply "'+fileName+'" to "'+S.presetName+'"?\n\n'+summary.join(', ')+'.'+warnRm))return;
+
+  const activeTo=S.activeIdx>=0&&used.has(S.activeIdx)?used.get(S.activeIdx):-1;
+  if(fp.items.length){S.promptTemplate=out;S.preset.promptTemplate=out;}
+  if(panelChanged)applyPanel(fp.panel);
+  if(promptChanged){S.mode='free';S.activeIdx=-1;ed.value=fp.prompt;S.preset.mainPrompt=fp.prompt;}
+  else if(fp.items.length){
+    S.activeIdx=activeTo>=0?activeTo:S.promptTemplate.findIndex(p=>isEd(p));
+    if(S.activeIdx>=0){
+      const it=S.promptTemplate[S.activeIdx];
+      if(!itFields(it).includes(S.activeField))S.activeField=itFields(it)[0];
+      S.mode='prompt';ed.value=itText(it,S.activeField);
+    }else S.mode='free';
+  }
+  crumb();update();renderNav();
+  if(S.bTab==='panel')renderPanel();
+  toast('Applied flat file: '+summary.join(', '));
 }
 
 // Build the full reconstructed prompt: every editable item parsed and joined,
@@ -1285,7 +1482,10 @@ function closeFullModal(){ _('fullModal').style.display='none'; }
 _('bImp').addEventListener('click',()=>_('fIn').click());
 _('fIn').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
-  try{loadPreset(await importRisuPreset(await f.arrayBuffer(),f.name));}
+  try{
+    if(/\.txt$/i.test(f.name))importFlat(await f.text(),f.name);
+    else loadPreset(await importRisuPreset(await f.arrayBuffer(),f.name));
+  }
   catch(err){toast('Import failed: '+err.message,true);console.error(err);}
   e.target.value='';
 });
@@ -1295,6 +1495,14 @@ _('bExp').addEventListener('click',async()=>{
   if(!S.preset){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),'cbs_export.json');toast('Exported JSON');return;}
   try{const{data,ext}=await exportRisuPreset(p,'risup');downloadBlob(data,(S.presetName||'preset')+'_edited'+ext);toast('Exported '+ext);}
   catch(err){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),(S.presetName||'preset')+'_edited.json');toast('JSON fallback',true);}
+});
+
+_('bUnflat').addEventListener('click',()=>_('fFlat').click());
+_('fFlat').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{importFlat(await f.text(),f.name);}
+  catch(err){toast('Unflatten failed: '+err.message,true);console.error(err);}
+  e.target.value='';
 });
 
 _('bFlat').addEventListener('click',()=>{
@@ -1372,6 +1580,18 @@ ed.addEventListener('paste',()=>{
   requestAnimationFrame(()=>{saveEdit();renderHighlight();});
 });
 ed.addEventListener('scroll',()=>{requestAnimationFrame(syncScroll);});
+// Re-render only when the caret moves into a different block.
+let caretRaf=0;
+function onCaret(){
+  if(caretRaf)return;
+  caretRaf=requestAnimationFrame(()=>{
+    caretRaf=0;
+    const cur=highlightCBS._active,nx=findActiveBlock(highlightCBS._blocks||[],ed.selectionStart);
+    if((cur?cur.start+':'+cur.cEnd:'')!==(nx?nx.start+':'+nx.cEnd:''))renderHighlight();
+  });
+}
+['keyup','mouseup','focus','select'].forEach(ev=>ed.addEventListener(ev,onCaret));
+document.addEventListener('selectionchange',()=>{if(document.activeElement===ed)onCaret();});
 ed.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=ed.selectionStart,n=ed.selectionEnd,v=ed.value;ed.value=v.substring(0,s)+'  '+v.substring(n);ed.selectionStart=ed.selectionEnd=s+2;saveEdit();sched();}});
 cN.addEventListener('input',sched);uN.addEventListener('input',sched);
 

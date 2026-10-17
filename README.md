@@ -6,7 +6,8 @@ A browser-based editor for [RisuAI](https://risuai.net) Curly Braces Syntax (CBS
 
 ### Core editing
 - **CBS parser** matching RisuAI behavior, with 100+ functions: variables, math, arrays, strings, conditionals (`#if`, `#if_pure`, `#when`, `#each`, `#pure`, `#escape`, `#code`, `#func`), and more
-- **Syntax highlighting** with depth-colored block nesting and alternating sibling shades
+- **Syntax highlighting** with depth-colored block nesting; consecutive sibling blocks alternate between plain and tinted-chip styling so they never blend together
+- **Active block box**: the innermost block around the cursor gets a thin outline (with its open, `{{:else}}`, and close tags emphasized), which makes nested CBS easier to follow. Unclosed blocks show a dashed red box running to the end of the text
 - **Live preview** that re-parses on every keystroke
 - **Diagnostics bar** flags unclosed blocks with clickable line numbers that jump the cursor to the error
 - **Typo detection** for single curly braces near CBS keywords and stray `}}` without a matching `{{`
@@ -14,6 +15,7 @@ A browser-based editor for [RisuAI](https://risuai.net) Curly Braces Syntax (CBS
 ### Preset I/O
 - **Import/Export** supporting `.risup`, `.risupreset`, and `.json` formats with full round-trip preservation
 - **Flatten export** outputs the entire preset as a labeled `.txt` with raw CBS preserved, including the Custom Toggles source at the top
+- **Unflatten import** reads a flattened `.txt` back in (also accepted by **Import**). Edit the text, reorder sections, or add new `--- [n] TYPE ... ---` sections, and the changes are merged into the loaded preset. All other preset settings are kept. Before applying, you get a summary of updated, added, and removed items. With no preset loaded, a minimal preset is built from the file
 - **Typed prompt slot editing** for Persona, Description, Lorebook, Author Note, Memory, and Post Everything (edits the `innerFormat` field; Author Note also exposes `defaultText` via a field switcher)
 
 ### Control Panel
@@ -40,6 +42,7 @@ Open `index.html` in any modern browser. No server, build step, or installation 
 4. Adjust toggles in the **Panel** tab to see how CBS conditionals resolve in real time
 5. Open the **CBS Reference** drawer for searchable documentation on every supported function and block
 6. Click **Export** to save changes back to `.risup`/`.risupreset`/`.json`, or **Flatten** to produce a parseable text snapshot
+7. To bring an edited flat file back (for example, after refining it with an AI), load the original preset, then click **Unflatten** and pick the `.txt`. Keep the `--- [n] ... ---` header lines intact, because they are how sections are matched back to prompt items
 
 ## CBS Syntax Reference
 
