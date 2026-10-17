@@ -151,6 +151,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .econtainer{flex:1;position:relative;overflow:hidden}
 .etxt,.ehigh{position:absolute;inset:0;padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:var(--fs);line-height:1.6;tab-size:2;white-space:pre-wrap;word-wrap:break-word;overflow:auto}
 .etxt{background:transparent;color:transparent;caret-color:var(--accent);border:none;resize:none;outline:none;z-index:2}
+.etxt::placeholder{color:var(--fg3);opacity:1}
 .ehigh{background:var(--bg1);z-index:1;pointer-events:none}
 
 /* Vertical divider */
@@ -268,8 +269,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .cb0a,.cb1a,.cb2a,.cb3a,.cb4a,.cb5a{background:color-mix(in srgb,var(--cbc) var(--cb-chip),transparent)}
 /* Block under the caret: its tags get an outline, its extent gets a thin box (outline/absolute box never shift layout) */
 .ehigh .cbs-cur{outline:1px solid var(--cbc);background:color-mix(in srgb,var(--cbc) calc(var(--cb-chip) + 12%),transparent)}
-.ehigh .blk-box{position:absolute;pointer-events:none;z-index:-1;border:1px solid color-mix(in srgb,var(--cbc) 70%,transparent);background:color-mix(in srgb,var(--cbc) 5%,transparent);border-radius:3px}
-.ehigh .blk-box.unclosed{border-style:dashed;--cbc:var(--err)}
+.ehigh .blk-box{position:absolute;left:0;top:0;pointer-events:none;z-index:-1;overflow:visible}
+.ehigh .blk-box path{fill:color-mix(in srgb,var(--cbc) 6%,transparent);stroke:color-mix(in srgb,var(--cbc) 75%,transparent);stroke-width:1;stroke-linejoin:round}
+.ehigh .blk-box.unclosed{--cbc:var(--err)}
+.ehigh .blk-box.unclosed path{stroke-dasharray:4 3}
 .cb-err{color:var(--err);font-weight:700;text-decoration:wavy underline var(--err);text-underline-offset:3px}
 .cbs-warn{color:var(--orange);background:var(--warn-syntax-bg);border-radius:2px}
 .ehigh .ca{background:var(--active-bg);border-radius:2px}
@@ -348,7 +351,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
           <div class="diag" id="diag"></div>
           <div class="econtainer">
             <div class="ehigh" id="hl"></div>
-            <textarea class="etxt" id="ed" spellcheck="false"></textarea>
+            <textarea class="etxt" id="ed" spellcheck="false" placeholder="CBS Editor v7.0&#10;&#10;Import a preset, or type CBS here to see it parsed in the preview."></textarea>
           </div>
         </div>
 
@@ -3774,6 +3777,7 @@ function highlightCBS(text, activeFlags, caret) {
   // Closed blocks with source ranges and the parts[] index of each tag (for caret emphasis)
   const blocks = [];
   const slashLines = [];
+  const strays = [];  // closing tags with no open block, and }} with no {{
   // Track alternating index per depth level
   const depthCounter = {};
   let lineNum = 1;
@@ -3808,6 +3812,7 @@ function highlightCBS(text, activeFlags, caret) {
           blocks.push(Object.assign(matched, { cStart: i, cEnd: j, cPart: parts.length }));
         } else {
           cls = 'cb-err';
+          strays.push({ tag: inner, line: lineNum });
         }
       } else if (BLOCK_MID.test(inner)) {
         const top = openStack[openStack.length-1];
@@ -3858,6 +3863,7 @@ function highlightCBS(text, activeFlags, caret) {
         if (text[e] === '}' && text[e+1] === '}') {
           emitPlain(runStart, e); runStart = e + 2;
           parts.push('<span class="cb-err" title="Stray }} without matching {{">' + escH('}}') + '</span>');
+          strays.push({ tag: null, line: lineNum });
           e += 2;
           continue;
         }
@@ -3886,6 +3892,7 @@ function highlightCBS(text, activeFlags, caret) {
 
   highlightCBS._diag = openStack.map(b => ({ tag: b.tag, line: b.line }));
   highlightCBS._slash = slashLines;
+  highlightCBS._stray = strays;
   // Unclosed blocks run to the end of the text
   openStack.forEach(b => blocks.push(Object.assign(b, { cStart: -1, cEnd: text.length + 1, cPart: -1 })));
   highlightCBS._blocks = blocks;
@@ -3902,7 +3909,7 @@ function highlightCBS(text, activeFlags, caret) {
   }
   return parts.join('');
 }
-highlightCBS._diag = []; highlightCBS._slash = []; highlightCBS._blocks = []; highlightCBS._active = null;
+highlightCBS._diag = []; highlightCBS._slash = []; highlightCBS._stray = []; highlightCBS._blocks = []; highlightCBS._active = null;
 function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
 
 // RPack: Simple byte substitution (from RisuAI source)
@@ -4090,7 +4097,6 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{comment::CBS Editor v7.0}}';
 
 let toastT;
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.className='toast',2500);}
@@ -4198,27 +4204,49 @@ function liveFlags(){
   return _liveFlags;
 }
 
-// Thin box around the block enclosing the caret, positioned from the markers highlightCBS emits.
-// Also re-run on resize / font change, since the box is positioned in pixels.
+// Outline around the block enclosing the caret, shaped like a text selection: it follows the
+// block's text line by line (from the open tag to the close tag) instead of boxing whole lines.
+// Positioned in pixels, so it is also redrawn on resize and font-size change.
 function drawBlockBox(){
   hl.querySelector('.blk-box')?.remove();
   const ab=highlightCBS._active;if(!ab)return;
   const s=hl.querySelector('[data-mk="s"]'),e=hl.querySelector('[data-mk="e"]');if(!s||!e)return;
-  const cs=getComputedStyle(hl),lh=parseFloat(cs.lineHeight)||20;
-  const lineTop=el=>el.offsetTop-(lh-el.offsetHeight)/2;
-  const st=lineTop(s),et=lineTop(e);
-  const box=document.createElement('div');
-  box.className='blk-box'+(ab.cPart<0?' unclosed':'');
-  if(ab.cPart>=0)box.style.setProperty('--cbc','var(--'+ab.cls.replace(/a$/,'')+')');
-  let left,width;
-  if(Math.abs(et-st)<lh/2){ left=s.offsetLeft-3; width=e.offsetLeft-s.offsetLeft+6; }
-  else{
-    const pl=parseFloat(cs.paddingLeft),pr=parseFloat(cs.paddingRight);
-    left=pl-6; width=hl.clientWidth-pl-pr+12;
+  const lh=parseFloat(getComputedStyle(hl).lineHeight)||20;
+  const range=document.createRange();range.setStartAfter(s);range.setEndBefore(e);
+  // Group the fragments into visual rows (one per wrapped line) with their horizontal extent
+  const hr=hl.getBoundingClientRect(),ox=hl.scrollLeft-hr.left,oy=hl.scrollTop-hr.top;
+  const rows=[];
+  for(const r of range.getClientRects()){
+    if(r.width<1)continue;  // empty lines: bridged by the outline instead of pinching it
+    const mid=(r.top+r.bottom)/2+oy,row=rows.find(w=>Math.abs(w.mid-mid)<lh/2);
+    if(row){row.l=Math.min(row.l,r.left+ox);row.r=Math.max(row.r,r.right+ox);}
+    else rows.push({mid,l:r.left+ox,r:r.right+ox});
   }
-  box.style.left=left+'px';box.style.width=width+'px';
-  box.style.top=(st-1)+'px';box.style.height=(et-st+lh+2)+'px';
-  hl.appendChild(box);
+  if(!rows.length)return;
+  rows.sort((a,b)=>a.mid-b.mid);
+  const PAD=3;
+  rows.forEach(w=>{w.t=w.mid-lh/2;w.b=w.mid+lh/2;w.l-=PAD;w.r=Math.max(w.r+PAD,w.l+2*PAD);});
+  // Consecutive rows that overlap horizontally form one outline; otherwise start a new one
+  // (e.g. a block running from the end of one line to the start of the next)
+  const shapes=[];
+  rows.forEach((w,k)=>{
+    const prev=rows[k-1],last=shapes[shapes.length-1];
+    if(prev&&w.l<prev.r&&w.r>prev.l){w.t=prev.b;last.push(w);}  // also bridges blank lines
+    else shapes.push([w]);
+  });
+  // Trace each shape: down the right edge row by row, then back up the left edge
+  const d=shapes.map(sh=>{
+    const pts=[];
+    sh.forEach(w=>{pts.push([w.r,w.t],[w.r,w.b]);});
+    sh.slice().reverse().forEach(w=>{pts.push([w.l,w.b],[w.l,w.t]);});
+    return 'M'+pts.map(([x,y])=>(Math.round(x)+.5)+' '+(Math.round(y)+.5)).join('L')+'Z';
+  }).join('');
+  const NS='http://www.w3.org/2000/svg',svg=document.createElementNS(NS,'svg'),path=document.createElementNS(NS,'path');
+  svg.setAttribute('class','blk-box'+(ab.cPart<0?' unclosed':''));
+  svg.setAttribute('width',hl.scrollWidth);svg.setAttribute('height',hl.scrollHeight);
+  if(ab.cPart>=0)svg.style.setProperty('--cbc','var(--'+ab.cls.replace(/a$/,'')+')');
+  path.setAttribute('d',d);
+  svg.appendChild(path);hl.appendChild(svg);
 }
 
 // Skip the rebuild when text, caret and Live flags are unchanged: sched() and update()
@@ -4233,16 +4261,18 @@ function renderHighlight(){
     renderDiag();
   }
   syncScroll();
-  sDot.classList.toggle('err',!!S.parseErr||highlightCBS._diag.length>0);
+  sDot.classList.toggle('err',!!S.parseErr||highlightCBS._diag.length>0||highlightCBS._stray.length>0);
 }
 
 // Diagnostics come from the highlight pass: unclosed blocks, and {{//}} comments that
 // RisuAI would send to the model
 function renderDiag(){
-  const diag=highlightCBS._diag,sl=highlightCBS._slash,diagEl=_('diag');
+  const diag=highlightCBS._diag,sl=highlightCBS._slash,st=highlightCBS._stray,diagEl=_('diag');
   const ln=n=>'<span data-ln="'+n+'">line '+n+'</span>';
   const msgs=[];
   if(diag.length)msgs.push('\u26A0 Unclosed: '+diag.map(d=>'<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>').join(', '));
+  // RisuAI leaves a closer with no open block in the output as literal text
+  if(st.length)msgs.push('\u26A0 No matching opener (left in the output as text): '+st.map(d=>'<span data-ln="'+d.line+'">'+(d.tag?'{{'+escH(d.tag)+'}}':'}}')+' line '+d.line+'</span>').join(', '));
   if(sl.length)msgs.push('\u26A0 {{//}} is not removed by RisuAI and reaches the model; use {{comment::...}}: '+sl.slice(0,5).map(ln).join(', ')+(sl.length>5?' \u2026':''));
   diagEl.innerHTML=msgs.join('<br>');
   diagEl.classList.toggle('show',msgs.length>0);

@@ -7,9 +7,9 @@ A browser-based editor for [RisuAI](https://risuai.net) Curly Braces Syntax (CBS
 ### Core editing
 - **RisuAI's own CBS engine**: the preview runs RisuAI's parser and its full function registry (about 170 functions and aliases), bundled from RisuAI's source, against a simulated character and chat. Prompt items are parsed the way RisuAI parses them, so quirks carry over too: for example, `{{setvar}}` is left as-is in prompts, and unset variables read as `null`
 - **Syntax highlighting** with depth-colored block nesting; consecutive sibling blocks alternate between plain and tinted-chip styling so they never blend together
-- **Active block box**: the innermost block around the cursor gets a thin outline (with its open, `{{:else}}`, and close tags emphasized), which makes nested CBS easier to follow. Unclosed blocks show a dashed red box running to the end of the text
+- **Active block outline**: the innermost block around the cursor gets a thin outline that follows its text like a selection does, from the open tag to the close tag, so blocks inside long wrapped lines are outlined without the surrounding text. Its open, `{{:else}}`, and close tags are emphasized. Unclosed blocks get a dashed red outline running to the end of the text
 - **Live preview** that re-parses on every keystroke
-- **Diagnostics bar** flags unclosed blocks, and `{{// ...}}` comments (which RisuAI sends to the model rather than removing), with clickable line numbers that jump the cursor there
+- **Diagnostics bar** flags unclosed blocks, closing tags or `}}` with no matching opener (RisuAI leaves those in the output as text), and `{{// ...}}` comments (which RisuAI sends to the model rather than removing), with clickable line numbers that jump the cursor there
 - **Typo detection** for single curly braces near CBS keywords and stray `}}` without a matching `{{`
 
 ### Preset I/O
