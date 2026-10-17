@@ -1089,7 +1089,7 @@ ed.value='{{//::CBS Editor v6.3}}';
 
 let toastT;
 function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.className='toast',2500);}
-function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;}
+function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;drawBlockBox();}
 function setPFS(v){S.pfs=Math.max(10,Math.min(18,v));document.documentElement.style.setProperty('--pfs',S.pfs+'px');_('pL').textContent=S.pfs;}
 function setUS(v){S.us=Math.max(80,Math.min(180,v));document.documentElement.style.setProperty('--us',(S.us/100).toString());_('uL').textContent=S.us;}
 
@@ -1100,17 +1100,20 @@ function togVars(){
   return o;
 }
 
+// Parser config from the current names/persona/toggles/vars/seed
+function parserCfg(){return {charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed};}
+
 function parse(){
   try{
-    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed});
-    const r=p.parse(ed.value);S.lastVars=p.vars;S.parseErr=null;sDot.classList.remove('err');return r;
-  }catch(e){S.parseErr=e.message;S.lastVars={};sDot.classList.add('err');return'Parse error: '+e.message;}
+    const p=createCBSParser(parserCfg());
+    const r=p.parse(ed.value);S.lastVars=p.vars;S.parseErr=null;return r;
+  }catch(e){S.parseErr=e.message;S.lastVars={};return'Parse error: '+e.message;}
 }
 
 // Parse an arbitrary item's text safely (used for shadow context neighbors)
 function parseItemText(t){
   try{
-    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed});
+    const p=createCBSParser(parserCfg());
     return p.parse(t||'');
   }catch(e){return '';}
 }
@@ -1157,7 +1160,7 @@ function syncScroll(){ hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLef
 // Live analysis runs a full parse; cache it so caret-only re-renders stay cheap.
 let _liveKey=null,_liveFlags=null;
 function liveFlags(){
-  const cfg={charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed};
+  const cfg=parserCfg();
   const key=ed.value+'\u0000'+JSON.stringify(cfg);
   if(key!==_liveKey){
     try{ _liveFlags=analyzeActiveRuns(ed.value,cfg); }
@@ -1168,7 +1171,9 @@ function liveFlags(){
 }
 
 // Thin box around the block enclosing the caret, positioned from the markers highlightCBS emits.
+// Also re-run on resize / font change, since the box is positioned in pixels.
 function drawBlockBox(){
+  hl.querySelector('.blk-box')?.remove();
   const ab=highlightCBS._active;if(!ab)return;
   const s=hl.querySelector('[data-mk="s"]'),e=hl.querySelector('[data-mk="e"]');if(!s||!e)return;
   const cs=getComputedStyle(hl),lh=parseFloat(cs.lineHeight)||20;
@@ -1188,39 +1193,38 @@ function drawBlockBox(){
   hl.appendChild(box);
 }
 
+// Skip the rebuild when text, caret and Live flags are unchanged: sched() and update()
+// both request a pass per edit, and each one re-lays out the whole overlay.
+let _hlText=null,_hlCaret=-1,_hlFlags=null;
 function renderHighlight(){
-  const flags=S.showActive?liveFlags():null;
-  hl.innerHTML=highlightCBS(ed.value,flags,ed.selectionStart)+'\n';
-  drawBlockBox();
-  syncScroll();
-  // Diagnostics depend on highlight pass, update them here
-  const diag = highlightCBS._diag || [];
-  const diagEl = _('diag');
-  if (diag.length > 0) {
-    diagEl.innerHTML = '\u26A0 Unclosed: ' + diag.map(d =>
-      '<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>'
-    ).join(', ');
-    diagEl.classList.add('show');
-    sDot.classList.add('err');
-    diagEl.querySelectorAll('span[data-ln]').forEach(s => {
-      s.addEventListener('click', () => {
-        const ln = parseInt(s.dataset.ln);
-        const lines = ed.value.split('\n');
-        let pos = 0;
-        for (let i = 0; i < ln - 1 && i < lines.length; i++) pos += lines[i].length + 1;
-        ed.focus();
-        ed.setSelectionRange(pos, pos);
-        const lineHeight = parseFloat(getComputedStyle(ed).lineHeight) || 20;
-        ed.scrollTop = (ln - 3) * lineHeight;
-        syncScroll();
-      });
-    });
-  } else {
-    diagEl.classList.remove('show');
-    diagEl.innerHTML = '';
-    if (!S.parseErr) sDot.classList.remove('err');
+  const flags=S.showActive?liveFlags():null,caret=ed.selectionStart;
+  if(ed.value!==_hlText||caret!==_hlCaret||flags!==_hlFlags){
+    _hlText=ed.value;_hlCaret=caret;_hlFlags=flags;
+    hl.innerHTML=highlightCBS(ed.value,flags,caret)+'\n';
+    drawBlockBox();
+    renderDiag();
   }
+  syncScroll();
+  sDot.classList.toggle('err',!!S.parseErr||highlightCBS._diag.length>0);
 }
+
+// Unclosed-block diagnostics come from the highlight pass
+function renderDiag(){
+  const diag=highlightCBS._diag,diagEl=_('diag');
+  diagEl.innerHTML=diag.length?'\u26A0 Unclosed: '+diag.map(d=>'<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>').join(', '):'';
+  diagEl.classList.toggle('show',diag.length>0);
+}
+_('diag').addEventListener('click',e=>{
+  const s=e.target.closest('span[data-ln]');if(!s)return;
+  const ln=parseInt(s.dataset.ln),lines=ed.value.split('\n');
+  let pos=0;
+  for(let i=0;i<ln-1&&i<lines.length;i++)pos+=lines[i].length+1;
+  ed.focus();
+  ed.setSelectionRange(pos,pos);
+  const lineHeight=parseFloat(getComputedStyle(ed).lineHeight)||20;
+  ed.scrollTop=(ln-3)*lineHeight;
+  syncScroll();
+});
 
 function update(){
   const r=parse();
@@ -1586,12 +1590,8 @@ _('bFullCopy').addEventListener('click',()=>{
 });
 
 ed.addEventListener('input',()=>{saveEdit();sched();});
-ed.addEventListener('paste',()=>{
-  // After the paste lands, immediately re-highlight and re-sync so the overlay
-  // never shows stale text under the cursor.
-  requestAnimationFrame(()=>{saveEdit();renderHighlight();});
-});
 ed.addEventListener('scroll',()=>{requestAnimationFrame(syncScroll);});
+new ResizeObserver(drawBlockBox).observe(hl);
 // Re-render only when the caret moves into a different block.
 let caretRaf=0;
 function onCaret(){
@@ -2302,7 +2302,6 @@ function toggleRefDrawer() {
 _('bRoll').addEventListener('click',()=>{
   S.rngSeed=(Math.random()*4294967296)>>>0;
   update();
-  renderHighlight();
   toast('Re-rolled randomness');
 });
 _('bRef').addEventListener('click', toggleRefDrawer);
