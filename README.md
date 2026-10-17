@@ -29,12 +29,13 @@ A browser-based editor for [RisuAI](https://risuai.net) Curly Braces Syntax (CBS
 - **CBS Reference drawer** (book icon button) with 113 entries across 16 categories, full-text search across names/signatures/descriptions/aliases, operator tables for `#when` and `{{? ...}}`, code examples with expected output, and inter-entry "See also" links
 - **Three-pane layout** (Prompt Navigator | Editor | Preview) with draggable dividers and collapsible sidebar
 - **Independent font controls** via the `Aa` dropdown: Editor (px), Panel (px), UI scale (%)
-- **Light/dark theme** toggle
+- **Light/dark theme** toggle; theme and font sizes are remembered per browser
+- **Unsaved-changes protection**: the browser warns before closing the tab with unexported edits, and importing another preset asks before discarding them
 - **Preview copy** button
 
 ## Usage
 
-Open `index.html` in any modern browser. No server, build step, or installation required.
+Open `index.html` in any modern browser. No server, build step, or installation required. It is a single self-contained file: the libraries used for `.risup`/`.risupreset` files are bundled inside it, so it also works offline.
 
 1. Click **Import** to load a `.risup`, `.risupreset`, or `.json` preset file
 2. Browse prompt items in the **Prompt Navigator** (left sidebar). Both `plain`/`jailbreak`/`cot`/`chatML` slots and typed slots like `persona`/`description`/`lorebook`/`authornote` are editable.
@@ -78,4 +79,12 @@ Toggle values are stored as `toggle_<key>` in global chat variables. Read them i
 
 ## License
 
-This work is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0). See [LICENSE](LICENSE) for the full text, or visit https://creativecommons.org/licenses/by-nc/4.0/
+Copyright (C) 2026 tresbien-rai
+
+This program is free software, licensed under the GNU General Public License version 3 (GPL-3.0). See [LICENSE](LICENSE) for the full text.
+
+Parts of the editor (the CBS parser, RPN calculator and preset encoding) are derived from [RisuAI](https://github.com/kwaroran/RisuAI) by Kwaroran, which is also licensed under GPL-3.0.
+
+Bundled third-party libraries, included in `index.html` with their license notices:
+- [fflate](https://github.com/101arrowz/fflate) 0.8.3, MIT License
+- [@msgpack/msgpack](https://github.com/msgpack/msgpack-javascript) 2.8.0, ISC License
