@@ -20,25 +20,21 @@
   /* Theme colors */
   --bg0:#0e0f14;--bg1:#13141a;--bg2:#1a1b24;--border:#2a2d3a;--border2:#3a3d4a;
   --fg:#c8ccd4;--fg2:#5c6370;--fg3:#3a3d4a;--accent:#61afef;--ok:#98c379;--err:#e06c75;--warn:#e5c07b;--purple:#c678dd;--cyan:#56b6c2;--orange:#d19a66;--muted:#abb2bf;
-  --caret:#61afef;--diag-bg:#1c1012;--diag-border:#3a2020;
+  --diag-bg:#1c1012;--diag-border:#3a2020;
   /* Syntax: block depth colors (hues chosen so neighboring depths never look alike) */
   --cb0:#c678dd;--cb1:#e5c07b;--cb2:#56b6c2;--cb3:#ff7eb6;--cb4:#98c379;--cb5:#f0915a;--cb-chip:22%;
   /* Syntax: type badge backgrounds */
-  --badge-plain-bg:#2a3a2a;--badge-jb-bg:#3a2a2a;--badge-cot-bg:#3a3a2a;--badge-persona-bg:#2a2a3a;
-  --badge-desc-bg:#2a3a3a;--badge-lore-bg:#3a2a3a;--badge-other-bg:#2a2d3a;--badge-an-bg:#3a3a2a;
-  --toggle-bg:#2a2d3a;--toggle-on:#61afef;--toggle-dot:#c8ccd4;
-  --input-bg:#0e0f14;--input-border:#2a2d3a;
+  --badge-plain-bg:#2a3a2a;--badge-jb-bg:#3a2a2a;--badge-persona-bg:#2a2a3a;
+  --badge-desc-bg:#2a3a3a;--badge-lore-bg:#3a2a3a;--badge-an-bg:#3a3a2a;
   --warn-syntax-bg:rgba(209,154,102,0.1);--active-bg:rgba(97,175,239,0.16)
 }
 .light{
   --bg0:#ffffff;--bg1:#f5f6f8;--bg2:#ebedf0;--border:#d0d3da;--border2:#b8bcc5;
   --fg:#1e2028;--fg2:#6b7280;--fg3:#b0b5c0;--accent:#2563eb;--ok:#16a34a;--err:#dc2626;--warn:#d97706;--purple:#7c3aed;--cyan:#0891b2;--orange:#c2410c;--muted:#4b5563;
-  --caret:#2563eb;--diag-bg:#fef2f2;--diag-border:#fecaca;
+  --diag-bg:#fef2f2;--diag-border:#fecaca;
   --cb0:#7c3aed;--cb1:#b45309;--cb2:#0891b2;--cb3:#db2777;--cb4:#16a34a;--cb5:#ea580c;--cb-chip:16%;
-  --badge-plain-bg:#dcfce7;--badge-jb-bg:#fee2e2;--badge-cot-bg:#fef9c3;--badge-persona-bg:#dbeafe;
-  --badge-desc-bg:#ccfbf1;--badge-lore-bg:#f3e8ff;--badge-other-bg:#f3f4f6;--badge-an-bg:#fef9c3;
-  --toggle-bg:#d0d3da;--toggle-on:#2563eb;--toggle-dot:#ffffff;
-  --input-bg:#ffffff;--input-border:#d0d3da;
+  --badge-plain-bg:#dcfce7;--badge-jb-bg:#fee2e2;--badge-persona-bg:#dbeafe;
+  --badge-desc-bg:#ccfbf1;--badge-lore-bg:#f3e8ff;--badge-an-bg:#fef9c3;
   --warn-syntax-bg:rgba(217,119,6,0.1);--active-bg:rgba(37,99,235,0.13)
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -210,7 +206,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .cps{background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:2px 3px;border-radius:3px;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;font-size:calc(var(--pfs) - 1px);outline:none;max-width:150px}
 .cps:focus{border-color:var(--accent)}
 .cpv{color:var(--border2);font-size:var(--us9);font-family:monospace;width:10px;text-align:center}
-.cph{font-size:var(--us9);color:var(--border2);margin-top:5px;line-height:1.3}
 
 .ib{padding:5px 8px;background:var(--bg0);border-radius:3px;border:1px solid var(--border)}
 .ir{display:flex;justify-content:space-between;padding:1px 0;font-size:var(--us10)}
@@ -772,7 +767,7 @@ function highlightCBS(text, activeFlags, caret) {
       let j = i + 2, depth = 1;
       while (j < text.length - 1 && depth > 0) {
         if (text[j] === '{' && text[j+1] === '{') { depth++; j += 2; }
-        else if (text[j] === '}' && text[j+1] === '}') { depth--; if (depth > 0) j += 2; else j += 2; }
+        else if (text[j] === '}' && text[j+1] === '}') { depth--; j += 2; }
         else j++;
       }
       if (depth > 0) j = text.length;
@@ -965,12 +960,7 @@ async function importRisuPreset(arrayBuf, fileName) {
   throw new Error("Unknown preset format (version: " + outer.presetVersion + ")");
 }
 
-async function exportRisuPreset(preset, format) {
-  if (format === 'json') {
-    const json = JSON.stringify(preset, null, 2);
-    return { data: new TextEncoder().encode(json), ext: '.json' };
-  }
-
+async function exportRisuPreset(preset) {
   // .risup format: msgpack encode -> encrypt -> msgpack encode outer -> fflate compress -> rpack encode
   needLibs();
   const innerPacked = MessagePack.encode(preset);
@@ -1509,7 +1499,7 @@ _('fIn').addEventListener('change',async e=>{
 _('bExp').addEventListener('click',async()=>{
   const p=buildExport();
   if(!S.preset){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),'cbs_export.json');toast('Exported JSON');return;}
-  try{const{data,ext}=await exportRisuPreset(p,'risup');downloadBlob(data,(S.presetName||'preset')+'_edited'+ext);toast('Exported '+ext);}
+  try{const{data,ext}=await exportRisuPreset(p);downloadBlob(data,(S.presetName||'preset')+'_edited'+ext);toast('Exported '+ext);}
   catch(err){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),(S.presetName||'preset')+'_edited.json');toast('Saved as JSON instead: '+err.message,true);console.error(err);}
 });
 
@@ -1530,24 +1520,19 @@ _('bFlat').addEventListener('click',()=>{
 // ============================================================
 // Drag + UI controls
 // ============================================================
-(function(){
-  const d=_('vDiv'),rp=_('rp');let g=false,sx,sw;
-  d.addEventListener('mousedown',e=>{g=true;sx=e.clientX;sw=rp.offsetWidth;document.body.style.cursor='col-resize';e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!g)return;rp.style.width=Math.max(180,Math.min(900,sw-(e.clientX-sx)))+'px';});
+// Drag a divider to resize a panel. size(start, delta) returns the new px size.
+function makeResizer(handle,target,axis,size){
+  let g=false,start,base;
+  const prop=axis==='x'?'width':'height',cur=axis==='x'?'col-resize':'row-resize';
+  const pos=e=>axis==='x'?e.clientX:e.clientY;
+  handle.addEventListener('mousedown',e=>{g=true;start=pos(e);base=axis==='x'?target.offsetWidth:target.offsetHeight;document.body.style.cursor=cur;e.preventDefault();});
+  document.addEventListener('mousemove',e=>{if(g)target.style[prop]=size(base,pos(e)-start)+'px';});
   document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
-})();
-(function(){
-  const d=_('leftHD'),b=_('leftBot'),l=_('left');let g=false,sy,sh;
-  d.addEventListener('mousedown',e=>{g=true;sy=e.clientY;sh=b.offsetHeight;document.body.style.cursor='row-resize';e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!g)return;b.style.height=Math.max(80,Math.min(l.offsetHeight-60,sh-(e.clientY-sy)))+'px';});
-  document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
-})();
-(function(){
-  const d=_('lvDiv'),lp=_('left');let g=false,sx,sw;
-  d.addEventListener('mousedown',e=>{g=true;sx=e.clientX;sw=lp.offsetWidth;document.body.style.cursor='col-resize';e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!g)return;lp.style.width=Math.max(140,Math.min(500,sw+(e.clientX-sx)))+'px';});
-  document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
-})();
+}
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+makeResizer(_('vDiv'),_('rp'),'x',(w,d)=>clamp(w-d,180,900));
+makeResizer(_('leftHD'),_('leftBot'),'y',(h,d)=>clamp(h-d,80,_('left').offsetHeight-60));
+makeResizer(_('lvDiv'),_('left'),'x',(w,d)=>clamp(w+d,140,500));
 
 _('bSide').addEventListener('click',()=>{S.sideOpen=!S.sideOpen;_('left').classList.toggle('collapsed',!S.sideOpen);_('lvDiv').style.display=S.sideOpen?'':'none';});
 _('fD').addEventListener('click',()=>setFS(S.fs-1));_('fI').addEventListener('click',()=>setFS(S.fs+1));
@@ -1562,12 +1547,13 @@ document.addEventListener('click',e=>{
   const m=_('ddFont');
   if(m.classList.contains('open')&&!m.contains(e.target)&&e.target!==_('bFont'))m.classList.remove('open');
 });
-_('bCopy').addEventListener('click',()=>{
-  navigator.clipboard.writeText(prev.textContent).then(()=>toast('Copied to clipboard')).catch(()=>{
+function copyText(t,msg){
+  navigator.clipboard.writeText(t).then(()=>toast(msg)).catch(()=>{
     // Fallback for non-HTTPS
-    const ta=document.createElement('textarea');ta.value=prev.textContent;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Copied to clipboard');
+    const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast(msg);
   });
-});
+}
+_('bCopy').addEventListener('click',()=>copyText(prev.textContent,'Copied to clipboard'));
 _('bShadow').addEventListener('click',()=>{
   S.showShadow=!S.showShadow;
   _('bShadow').classList.toggle('on-toggle',S.showShadow);
@@ -1582,12 +1568,7 @@ _('bFull').addEventListener('click',openFullModal);
 _('bFullClose').addEventListener('click',closeFullModal);
 _('fullModal').addEventListener('click',e=>{if(e.target===_('fullModal'))closeFullModal();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&_('fullModal').style.display!=='none')closeFullModal();});
-_('bFullCopy').addEventListener('click',()=>{
-  const t=_('fullPrev').textContent;
-  navigator.clipboard.writeText(t).then(()=>toast('Copied full prompt')).catch(()=>{
-    const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Copied full prompt');
-  });
-});
+_('bFullCopy').addEventListener('click',()=>copyText(_('fullPrev').textContent,'Copied full prompt'));
 
 ed.addEventListener('input',()=>{saveEdit();sched();});
 ed.addEventListener('scroll',()=>{requestAnimationFrame(syncScroll);});
@@ -2167,14 +2148,7 @@ const REF_DATA = [
     desc: 'Displays a character emotion sprite by name.' },
 ];
 
-const REF_TOGGLES_INTRO = `Custom Toggles let preset authors define UI controls (checkboxes, dropdowns, text fields, groups) that surface in the user's chat sidebar. Toggle values are stored in global chat variables with a "toggle_" prefix.
-
-Each line follows: key=label=type=options
-Empty lines are ignored. The type field determines what kind of control is created.
-
-Most toggles store their value in toggle_<key>. Reference them in prompts via {{getglobalvar::toggle_<key>}}, or via #when operators (toggle, tis, tisnot) which add the prefix automatically.`;
-
-const REF_STATE = { active: null, query: '', activeIdx: 0 };
+const REF_STATE = { active: null, query: '' };
 
 function refMatch(entry, q) {
   if (!q) return true;
@@ -2313,21 +2287,7 @@ _('refSearch').addEventListener('input', e => {
 });
 
 // Drawer height drag
-(function(){
-  const hd = _('drawerHD'), dr = _('drawer');
-  let g = false, sy, sh;
-  hd.addEventListener('mousedown', e => {
-    g = true; sy = e.clientY; sh = dr.offsetHeight;
-    document.body.style.cursor = 'row-resize'; e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
-    if (!g) return;
-    dr.style.height = Math.max(140, Math.min(700, sh - (e.clientY - sy))) + 'px';
-  });
-  document.addEventListener('mouseup', () => {
-    if (g) { g = false; document.body.style.cursor = ''; }
-  });
-})();
+makeResizer(_('drawerHD'),_('drawer'),'y',(h,d)=>clamp(h-d,140,700));
 
 
 function rPI(items){
