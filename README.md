@@ -5,11 +5,11 @@ A browser-based editor for [RisuAI](https://risuai.net) Curly Braces Syntax (CBS
 ## Features
 
 ### Core editing
-- **CBS parser** matching RisuAI behavior, with 100+ functions: variables, math, arrays, strings, conditionals (`#if`, `#if_pure`, `#when`, `#each`, `#pure`, `#escape`, `#code`, `#func`), and more
+- **RisuAI's own CBS engine**: the preview runs RisuAI's parser and its full function registry (about 170 functions and aliases), bundled from RisuAI's source, against a simulated character and chat. Prompt items are parsed the way RisuAI parses them, so quirks carry over too: for example, `{{setvar}}` is left as-is in prompts, and unset variables read as `null`
 - **Syntax highlighting** with depth-colored block nesting; consecutive sibling blocks alternate between plain and tinted-chip styling so they never blend together
 - **Active block box**: the innermost block around the cursor gets a thin outline (with its open, `{{:else}}`, and close tags emphasized), which makes nested CBS easier to follow. Unclosed blocks show a dashed red box running to the end of the text
 - **Live preview** that re-parses on every keystroke
-- **Diagnostics bar** flags unclosed blocks with clickable line numbers that jump the cursor to the error
+- **Diagnostics bar** flags unclosed blocks, and `{{// ...}}` comments (which RisuAI sends to the model rather than removing), with clickable line numbers that jump the cursor there
 - **Typo detection** for single curly braces near CBS keywords and stray `}}` without a matching `{{`
 
 ### Preset I/O
@@ -26,20 +26,21 @@ A browser-based editor for [RisuAI](https://risuai.net) Curly Braces Syntax (CBS
 - Inline Toggle Syntax reference
 
 ### Reference & UX
-- **CBS Reference drawer** (book icon button) with 113 entries across 16 categories, full-text search across names/signatures/descriptions/aliases, operator tables for `#when` and `{{? ...}}`, code examples with expected output, and inter-entry "See also" links
+- **CBS Reference drawer** (book icon button) with 131 entries across 16 categories, checked against RisuAI's behaviour, full-text search across names/signatures/descriptions/aliases, operator tables for `#when` and `{{? ...}}`, code examples with expected output, and inter-entry "See also" links
 - **Three-pane layout** (Prompt Navigator | Editor | Preview) with draggable dividers and collapsible sidebar
 - **Independent font controls** via the `Aa` dropdown: Editor (px), Panel (px), UI scale (%)
-- **Light/dark theme** toggle
+- **Light/dark theme** toggle; theme and font sizes are remembered per browser
+- **Unsaved-changes protection**: the browser warns before closing the tab with unexported edits, and importing another preset asks before discarding them
 - **Preview copy** button
 
 ## Usage
 
-Open `index.html` in any modern browser. No server, build step, or installation required.
+Open `index.html` in any modern browser. No server, build step, or installation required. It is a single self-contained file: the libraries used for `.risup`/`.risupreset` files are bundled inside it, so it also works offline.
 
 1. Click **Import** to load a `.risup`, `.risupreset`, or `.json` preset file
 2. Browse prompt items in the **Prompt Navigator** (left sidebar). Both `plain`/`jailbreak`/`cot`/`chatML` slots and typed slots like `persona`/`description`/`lorebook`/`authornote` are editable.
 3. Click any item to load it in the editor
-4. Adjust toggles in the **Panel** tab to see how CBS conditionals resolve in real time
+4. Adjust toggles in the **Panel** tab to see how CBS conditionals resolve in real time. Values in the **Vars** tab act as the preset's default variables (what `{{getvar}}` returns when a variable hasn't been set)
 5. Open the **CBS Reference** drawer for searchable documentation on every supported function and block
 6. Click **Export** to save changes back to `.risup`/`.risupreset`/`.json`, or **Flatten** to produce a parseable text snapshot
 7. To bring an edited flat file back (for example, after refining it with an AI), load the original preset, then click **Unflatten** and pick the `.txt`. Keep the `--- [n] ... ---` header lines intact, because they are how sections are matched back to prompt items
@@ -49,12 +50,13 @@ Open `index.html` in any modern browser. No server, build step, or installation 
 The built-in reference drawer covers every supported construct in detail. A quick orientation:
 
 - **Identity**: `{{char}}`, `{{user}}`, `{{persona}}`, `{{description}}`, `{{scenario}}`, ...
-- **Variables**: `{{getvar::name}}`, `{{setvar::name::value}}`, `{{addvar::name::n}}`, `{{getglobalvar::name}}`, `{{tempvar::name}}`, `{{settempvar::name::value}}`
-- **Conditionals**: `{{#if condition}}...{{:else}}...{{/if}}`, `{{#if_pure ...}}` (no trim), `{{#when::val::op::compare}}` with operators `is`/`isnot`/`var`/`vis`/`visnot`/`toggle`/`tis`/`tisnot`/`>`/`<`/`>=`/`<=`/`and`/`or`/`not`/`keep`
-- **Calc** (RPN, not JS eval): `{{? expr}}` and `{{calc::expr}}` with `+ - * / % ^ = == != < > <= >= && || !` and parentheses. Single `=` works as equality.
-- **Iteration**: `{{#each array as item}}...{{/each}}` (the `as` clause is required since the January 2026 RisuAI update)
-- **Structural**: `{{#pure}}`, `{{#puredisplay}}`, `{{#escape}}`, `{{#code}}`, `{{#func name(args)}}body{{/func}}`
-- **Math, strings, arrays, random, time** and **escape** helpers for literal braces
+- **Variables**: `{{getvar::name}}`, `{{getglobalvar::name}}`, `{{tempvar::name}}`, `{{settempvar::name::value}}`. `{{setvar}}`/`{{addvar}}` only run where RisuAI executes variable commands (scripts, triggers), not in prompt items; use tempvars there
+- **Conditionals**: `{{#when::val::op::compare}}...{{:else}}...{{/when}}` with operators `is`/`isnot`/`var`/`vis`/`visnot`/`toggle`/`tis`/`tisnot`/`>`/`<`/`>=`/`<=`/`and`/`or`/`not`/`keep`/`legacy`; `{{#if condition}}...{{/if}}` and `{{#if_pure ...}}` (no trim) have no else branch
+- **Calc** (RPN, not JS eval): `{{? expr}}` and `{{calc::expr}}` with `+ - * / % ^ = == != < > <= >= && || !` and parentheses. Single `=` works as equality; `$name` / `@name` read chat / global variables
+- **Iteration**: `{{#each array as item}}...{{slot::item}}...{{/each}}`
+- **Structural**: `{{#puredisplay}}` (replaces the deprecated `{{#pure}}`), `{{#escape}}`, `{{#code}}`, `{{#func name}}...{{arg::1}}...{{/func}}` called with `{{call::name::value}}`
+- **Comments**: `{{comment::...}}` is removed from prompts; `{{// ...}}` is not
+- **Math, strings, arrays, random (`{{random}}`, `{{pick}}`, `{{roll::20}}`, `{{dice::2d6}}`), time** and **escape** helpers for literal braces
 
 ## Custom Toggles Format
 
@@ -76,6 +78,23 @@ Toggle values are stored as `toggle_<key>` in global chat variables. Read them i
 
 `groupEnd` is case-sensitive in RisuAI. The editor warns on lowercase `groupend` since RisuAI silently ignores it.
 
+## Development
+
+The editor is a single `index.html` and needs no build step. Two optional Node scripts in `tools/` keep its CBS engine in step with RisuAI:
+
+- `node tools/sync-risu.mjs <RisuAI checkout>` regenerates the bundled engine (the block between the `RISU-ENGINE` markers) from RisuAI's source, using the TypeScript compiler (`npm install -g typescript`). It fails if RisuAI's code starts needing something the editor's `RisuHost` doesn't provide.
+- `node tools/check.mjs` runs the engine in Node and checks it against cases pinned to RisuAI's behaviour and every CBS Reference example with a stated output.
+
+To update after a RisuAI release: `git clone --depth 1 https://github.com/kwaroran/RisuAI.git /tmp/RisuAI`, run the sync, run the check, and review any reference entries it reports.
+
 ## License
 
-This work is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0). See [LICENSE](LICENSE) for the full text, or visit https://creativecommons.org/licenses/by-nc/4.0/
+Copyright (C) 2026 tresbien-rai
+
+This program is free software, licensed under the GNU General Public License version 3 (GPL-3.0). See [LICENSE](LICENSE) for the full text.
+
+The CBS engine (parser, function registry and calculator) is generated from [RisuAI](https://github.com/kwaroran/RisuAI) by Kwaroran, and the preset encoding is derived from it; RisuAI is also licensed under GPL-3.0.
+
+Bundled third-party libraries, included in `index.html` with their license notices:
+- [fflate](https://github.com/101arrowz/fflate) 0.8.3, MIT License
+- [@msgpack/msgpack](https://github.com/msgpack/msgpack-javascript) 2.8.0, ISC License
