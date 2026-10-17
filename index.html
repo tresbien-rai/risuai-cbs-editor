@@ -6,8 +6,9 @@
 <title>CBS Editor - RisuAI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fflate/umd/index.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack/dist.es5+umd/msgpack.min.js"></script>
+<!-- Pinned: unversioned jsDelivr URLs follow "latest", and msgpack 3.x dropped dist.es5+umd/ -->
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.3/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@msgpack/msgpack@2.8.0/dist.es5+umd/msgpack.min.js"></script>
 <style>
 :root{--fs:13px;--pfs:13px;--us:1;
   --uxs:calc(8px * var(--us));
@@ -19,25 +20,21 @@
   /* Theme colors */
   --bg0:#0e0f14;--bg1:#13141a;--bg2:#1a1b24;--border:#2a2d3a;--border2:#3a3d4a;
   --fg:#c8ccd4;--fg2:#5c6370;--fg3:#3a3d4a;--accent:#61afef;--ok:#98c379;--err:#e06c75;--warn:#e5c07b;--purple:#c678dd;--cyan:#56b6c2;--orange:#d19a66;--muted:#abb2bf;
-  --caret:#61afef;--diag-bg:#1c1012;--diag-border:#3a2020;
+  --diag-bg:#1c1012;--diag-border:#3a2020;
   /* Syntax: block depth colors (hues chosen so neighboring depths never look alike) */
   --cb0:#c678dd;--cb1:#e5c07b;--cb2:#56b6c2;--cb3:#ff7eb6;--cb4:#98c379;--cb5:#f0915a;--cb-chip:22%;
   /* Syntax: type badge backgrounds */
-  --badge-plain-bg:#2a3a2a;--badge-jb-bg:#3a2a2a;--badge-cot-bg:#3a3a2a;--badge-persona-bg:#2a2a3a;
-  --badge-desc-bg:#2a3a3a;--badge-lore-bg:#3a2a3a;--badge-other-bg:#2a2d3a;--badge-an-bg:#3a3a2a;
-  --toggle-bg:#2a2d3a;--toggle-on:#61afef;--toggle-dot:#c8ccd4;
-  --input-bg:#0e0f14;--input-border:#2a2d3a;
+  --badge-plain-bg:#2a3a2a;--badge-jb-bg:#3a2a2a;--badge-persona-bg:#2a2a3a;
+  --badge-desc-bg:#2a3a3a;--badge-lore-bg:#3a2a3a;--badge-an-bg:#3a3a2a;
   --warn-syntax-bg:rgba(209,154,102,0.1);--active-bg:rgba(97,175,239,0.16)
 }
 .light{
   --bg0:#ffffff;--bg1:#f5f6f8;--bg2:#ebedf0;--border:#d0d3da;--border2:#b8bcc5;
   --fg:#1e2028;--fg2:#6b7280;--fg3:#b0b5c0;--accent:#2563eb;--ok:#16a34a;--err:#dc2626;--warn:#d97706;--purple:#7c3aed;--cyan:#0891b2;--orange:#c2410c;--muted:#4b5563;
-  --caret:#2563eb;--diag-bg:#fef2f2;--diag-border:#fecaca;
+  --diag-bg:#fef2f2;--diag-border:#fecaca;
   --cb0:#7c3aed;--cb1:#b45309;--cb2:#0891b2;--cb3:#db2777;--cb4:#16a34a;--cb5:#ea580c;--cb-chip:16%;
-  --badge-plain-bg:#dcfce7;--badge-jb-bg:#fee2e2;--badge-cot-bg:#fef9c3;--badge-persona-bg:#dbeafe;
-  --badge-desc-bg:#ccfbf1;--badge-lore-bg:#f3e8ff;--badge-other-bg:#f3f4f6;--badge-an-bg:#fef9c3;
-  --toggle-bg:#d0d3da;--toggle-on:#2563eb;--toggle-dot:#ffffff;
-  --input-bg:#ffffff;--input-border:#d0d3da;
+  --badge-plain-bg:#dcfce7;--badge-jb-bg:#fee2e2;--badge-persona-bg:#dbeafe;
+  --badge-desc-bg:#ccfbf1;--badge-lore-bg:#f3e8ff;--badge-an-bg:#fef9c3;
   --warn-syntax-bg:rgba(217,119,6,0.1);--active-bg:rgba(37,99,235,0.13)
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -209,7 +206,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 .cps{background:var(--bg0);border:1px solid var(--border);color:var(--fg);padding:2px 3px;border-radius:3px;font-family:'Noto Sans KR','JetBrains Mono',sans-serif;font-size:calc(var(--pfs) - 1px);outline:none;max-width:150px}
 .cps:focus{border-color:var(--accent)}
 .cpv{color:var(--border2);font-size:var(--us9);font-family:monospace;width:10px;text-align:center}
-.cph{font-size:var(--us9);color:var(--border2);margin-top:5px;line-height:1.3}
 
 .ib{padding:5px 8px;background:var(--bg0);border-radius:3px;border:1px solid var(--border)}
 .ir{display:flex;justify-content:space-between;padding:1px 0;font-size:var(--us10)}
@@ -249,7 +245,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font
 <div class="app">
   <div class="hdr nosel">
     <button class="hb p" id="bSide" title="Toggle sidebar">&#9776;</button>
-    <div class="htitle">CBS Editor <span>v6.3</span></div>
+    <div class="htitle">CBS Editor <span>v6.4</span></div>
     <div class="hsep"></div>
     <button class="hb" id="bImp">Import</button>
     <button class="hb g" id="bExp">Export</button>
@@ -771,7 +767,7 @@ function highlightCBS(text, activeFlags, caret) {
       let j = i + 2, depth = 1;
       while (j < text.length - 1 && depth > 0) {
         if (text[j] === '{' && text[j+1] === '{') { depth++; j += 2; }
-        else if (text[j] === '}' && text[j+1] === '}') { depth--; if (depth > 0) j += 2; else j += 2; }
+        else if (text[j] === '}' && text[j+1] === '}') { depth--; j += 2; }
         else j++;
       }
       if (depth > 0) j = text.length;
@@ -884,7 +880,7 @@ function highlightCBS(text, activeFlags, caret) {
   return parts.join('');
 }
 highlightCBS._diag = []; highlightCBS._blocks = []; highlightCBS._active = null;
-function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function escH(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
 
 // RPack: Simple byte substitution (from RisuAI source)
 // ============================================================
@@ -928,8 +924,15 @@ async function risuDecrypt(data, keyStr) {
 // ============================================================
 // Preset Import/Export
 // ============================================================
+// .risup/.risupreset need the CDN libraries; fail with a clear message if they didn't load
+function needLibs() {
+  if (typeof fflate === 'undefined' || typeof MessagePack === 'undefined')
+    throw new Error('compression libraries failed to load (check your connection and reload)');
+}
+
 async function importRisuPreset(arrayBuf, fileName) {
   let data = new Uint8Array(arrayBuf);
+  fileName = fileName.toLowerCase();
 
   // .risup: rpack decode first
   if (fileName.endsWith('.risup')) {
@@ -943,6 +946,7 @@ async function importRisuPreset(arrayBuf, fileName) {
   }
 
   // .risupreset or .risup: fflate decompress -> msgpack decode -> decrypt -> msgpack decode
+  needLibs();
   const decompressed = fflate.decompressSync(data);
   const outer = MessagePack.decode(decompressed);
 
@@ -956,13 +960,9 @@ async function importRisuPreset(arrayBuf, fileName) {
   throw new Error("Unknown preset format (version: " + outer.presetVersion + ")");
 }
 
-async function exportRisuPreset(preset, format) {
-  if (format === 'json') {
-    const json = JSON.stringify(preset, null, 2);
-    return { data: new TextEncoder().encode(json), ext: '.json' };
-  }
-
+async function exportRisuPreset(preset) {
   // .risup format: msgpack encode -> encrypt -> msgpack encode outer -> fflate compress -> rpack encode
+  needLibs();
   const innerPacked = MessagePack.encode(preset);
   const encrypted = await risuEncrypt(innerPacked, 'risupreset');
   const outerObj = { presetVersion: 2, type: 'preset', preset: encrypted };
@@ -1075,10 +1075,11 @@ const ed=_('ed'),hl=_('hl'),prev=_('prev'),sDot=_('sDot'),cN=_('cN'),uN=_('uN');
 const eCrumb=_('eCrumb'),toastEl=_('toast'),navBody=_('navBody');
 const tc={panel:_('tcPanel'),vars:_('tcVars'),state:_('tcState')};
 
-ed.value='{{//::CBS Editor v6.3}}';
+ed.value='{{//::CBS Editor v6.4}}';
 
-function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');setTimeout(()=>toastEl.className='toast',2500);}
-function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;}
+let toastT;
+function toast(m,e){toastEl.textContent=m;toastEl.className='toast show'+(e?' err':'');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.className='toast',2500);}
+function setFS(v){S.fs=Math.max(9,Math.min(22,v));document.documentElement.style.setProperty('--fs',S.fs+'px');_('fL').textContent=S.fs;drawBlockBox();}
 function setPFS(v){S.pfs=Math.max(10,Math.min(18,v));document.documentElement.style.setProperty('--pfs',S.pfs+'px');_('pL').textContent=S.pfs;}
 function setUS(v){S.us=Math.max(80,Math.min(180,v));document.documentElement.style.setProperty('--us',(S.us/100).toString());_('uL').textContent=S.us;}
 
@@ -1089,17 +1090,20 @@ function togVars(){
   return o;
 }
 
+// Parser config from the current names/persona/toggles/vars/seed
+function parserCfg(){return {charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed};}
+
 function parse(){
   try{
-    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed});
-    const r=p.parse(ed.value);S.lastVars=p.vars;S.parseErr=null;sDot.classList.remove('err');return r;
-  }catch(e){S.parseErr=e.message;S.lastVars={};sDot.classList.add('err');return'Parse error: '+e.message;}
+    const p=createCBSParser(parserCfg());
+    const r=p.parse(ed.value);S.lastVars=p.vars;S.parseErr=null;return r;
+  }catch(e){S.parseErr=e.message;S.lastVars={};return'Parse error: '+e.message;}
 }
 
 // Parse an arbitrary item's text safely (used for shadow context neighbors)
 function parseItemText(t){
   try{
-    const p=createCBSParser({charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed});
+    const p=createCBSParser(parserCfg());
     return p.parse(t||'');
   }catch(e){return '';}
 }
@@ -1146,7 +1150,7 @@ function syncScroll(){ hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLef
 // Live analysis runs a full parse; cache it so caret-only re-renders stay cheap.
 let _liveKey=null,_liveFlags=null;
 function liveFlags(){
-  const cfg={charName:cN.value,userName:uN.value,persona:S.persona,variables:togVars(),toggles:{},rngSeed:S.rngSeed};
+  const cfg=parserCfg();
   const key=ed.value+'\u0000'+JSON.stringify(cfg);
   if(key!==_liveKey){
     try{ _liveFlags=analyzeActiveRuns(ed.value,cfg); }
@@ -1157,7 +1161,9 @@ function liveFlags(){
 }
 
 // Thin box around the block enclosing the caret, positioned from the markers highlightCBS emits.
+// Also re-run on resize / font change, since the box is positioned in pixels.
 function drawBlockBox(){
+  hl.querySelector('.blk-box')?.remove();
   const ab=highlightCBS._active;if(!ab)return;
   const s=hl.querySelector('[data-mk="s"]'),e=hl.querySelector('[data-mk="e"]');if(!s||!e)return;
   const cs=getComputedStyle(hl),lh=parseFloat(cs.lineHeight)||20;
@@ -1177,39 +1183,38 @@ function drawBlockBox(){
   hl.appendChild(box);
 }
 
+// Skip the rebuild when text, caret and Live flags are unchanged: sched() and update()
+// both request a pass per edit, and each one re-lays out the whole overlay.
+let _hlText=null,_hlCaret=-1,_hlFlags=null;
 function renderHighlight(){
-  const flags=S.showActive?liveFlags():null;
-  hl.innerHTML=highlightCBS(ed.value,flags,ed.selectionStart)+'\n';
-  drawBlockBox();
-  syncScroll();
-  // Diagnostics depend on highlight pass, update them here
-  const diag = highlightCBS._diag || [];
-  const diagEl = _('diag');
-  if (diag.length > 0) {
-    diagEl.innerHTML = '\u26A0 Unclosed: ' + diag.map(d =>
-      '<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>'
-    ).join(', ');
-    diagEl.classList.add('show');
-    sDot.classList.add('err');
-    diagEl.querySelectorAll('span[data-ln]').forEach(s => {
-      s.addEventListener('click', () => {
-        const ln = parseInt(s.dataset.ln);
-        const lines = ed.value.split('\n');
-        let pos = 0;
-        for (let i = 0; i < ln - 1 && i < lines.length; i++) pos += lines[i].length + 1;
-        ed.focus();
-        ed.setSelectionRange(pos, pos);
-        const lineHeight = parseFloat(getComputedStyle(ed).lineHeight) || 20;
-        ed.scrollTop = (ln - 3) * lineHeight;
-        syncScroll();
-      });
-    });
-  } else {
-    diagEl.classList.remove('show');
-    diagEl.innerHTML = '';
-    if (!S.parseErr) sDot.classList.remove('err');
+  const flags=S.showActive?liveFlags():null,caret=ed.selectionStart;
+  if(ed.value!==_hlText||caret!==_hlCaret||flags!==_hlFlags){
+    _hlText=ed.value;_hlCaret=caret;_hlFlags=flags;
+    hl.innerHTML=highlightCBS(ed.value,flags,caret)+'\n';
+    drawBlockBox();
+    renderDiag();
   }
+  syncScroll();
+  sDot.classList.toggle('err',!!S.parseErr||highlightCBS._diag.length>0);
 }
+
+// Unclosed-block diagnostics come from the highlight pass
+function renderDiag(){
+  const diag=highlightCBS._diag,diagEl=_('diag');
+  diagEl.innerHTML=diag.length?'\u26A0 Unclosed: '+diag.map(d=>'<span data-ln="'+d.line+'">{{'+escH(d.tag)+'}} line '+d.line+'</span>').join(', '):'';
+  diagEl.classList.toggle('show',diag.length>0);
+}
+_('diag').addEventListener('click',e=>{
+  const s=e.target.closest('span[data-ln]');if(!s)return;
+  const ln=parseInt(s.dataset.ln),lines=ed.value.split('\n');
+  let pos=0;
+  for(let i=0;i<ln-1&&i<lines.length;i++)pos+=lines[i].length+1;
+  ed.focus();
+  ed.setSelectionRange(pos,pos);
+  const lineHeight=parseFloat(getComputedStyle(ed).lineHeight)||20;
+  ed.scrollTop=(ln-3)*lineHeight;
+  syncScroll();
+});
 
 function update(){
   const r=parse();
@@ -1260,7 +1265,7 @@ function saveEdit(){
 function loadPreset(pr){
   S.preset=pr;S.presetName=pr.name||'Unnamed';
   S.promptTemplate=pr.promptTemplate||[];S.manualVars=[];
-  if(pr.customPromptTemplateToggle)applyPanel(pr.customPromptTemplateToggle);
+  S.panelValues={};applyPanel(pr.customPromptTemplateToggle||'');
   if(pr.templateDefaultVariables){
     for(const ln of pr.templateDefaultVariables.trim().split('\n')){
       const eq=ln.indexOf('=');if(eq===-1)continue;
@@ -1274,7 +1279,7 @@ function loadPreset(pr){
     const i=S.promptTemplate.findIndex(p=>isEd(p)&&itFields(p).some(f=>p[f]&&p[f].length>0));
     if(i!==-1){S.activeIdx=i;S.activeField=itFields(S.promptTemplate[i])[0];ed.value=itText(S.promptTemplate[i],S.activeField);S.mode='prompt';}
   }
-  if(S.activeIdx===-1&&pr.mainPrompt){ed.value=pr.mainPrompt;S.mode='free';}
+  if(S.activeIdx===-1){ed.value=pr.mainPrompt||'';S.mode='free';}
   crumb();update();renderNav();
   if(S.bTab==='panel')renderPanel();
   if(S.bTab==='vars')renderVars();
@@ -1285,7 +1290,8 @@ function buildExport(){
   saveEdit();const p=S.preset?{...S.preset}:{};
   p.name=S.presetName||'CBS Export';
   if(S.promptTemplate.length>0)p.promptTemplate=S.promptTemplate;
-  if(S.panelText)p.customPromptTemplateToggle=S.panelText;
+  // Write back even when cleared, so emptying the panel removes the toggles
+  if(S.panelText||'customPromptTemplateToggle' in p)p.customPromptTemplateToggle=S.panelText;
   return p;
 }
 
@@ -1493,8 +1499,8 @@ _('fIn').addEventListener('change',async e=>{
 _('bExp').addEventListener('click',async()=>{
   const p=buildExport();
   if(!S.preset){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),'cbs_export.json');toast('Exported JSON');return;}
-  try{const{data,ext}=await exportRisuPreset(p,'risup');downloadBlob(data,(S.presetName||'preset')+'_edited'+ext);toast('Exported '+ext);}
-  catch(err){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),(S.presetName||'preset')+'_edited.json');toast('JSON fallback',true);}
+  try{const{data,ext}=await exportRisuPreset(p);downloadBlob(data,(S.presetName||'preset')+'_edited'+ext);toast('Exported '+ext);}
+  catch(err){downloadBlob(new TextEncoder().encode(JSON.stringify(p,null,2)),(S.presetName||'preset')+'_edited.json');toast('Saved as JSON instead: '+err.message,true);console.error(err);}
 });
 
 _('bUnflat').addEventListener('click',()=>_('fFlat').click());
@@ -1514,24 +1520,19 @@ _('bFlat').addEventListener('click',()=>{
 // ============================================================
 // Drag + UI controls
 // ============================================================
-(function(){
-  const d=_('vDiv'),rp=_('rp');let g=false,sx,sw;
-  d.addEventListener('mousedown',e=>{g=true;sx=e.clientX;sw=rp.offsetWidth;document.body.style.cursor='col-resize';e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!g)return;rp.style.width=Math.max(180,Math.min(900,sw-(e.clientX-sx)))+'px';});
+// Drag a divider to resize a panel. size(start, delta) returns the new px size.
+function makeResizer(handle,target,axis,size){
+  let g=false,start,base;
+  const prop=axis==='x'?'width':'height',cur=axis==='x'?'col-resize':'row-resize';
+  const pos=e=>axis==='x'?e.clientX:e.clientY;
+  handle.addEventListener('mousedown',e=>{g=true;start=pos(e);base=axis==='x'?target.offsetWidth:target.offsetHeight;document.body.style.cursor=cur;e.preventDefault();});
+  document.addEventListener('mousemove',e=>{if(g)target.style[prop]=size(base,pos(e)-start)+'px';});
   document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
-})();
-(function(){
-  const d=_('leftHD'),b=_('leftBot'),l=_('left');let g=false,sy,sh;
-  d.addEventListener('mousedown',e=>{g=true;sy=e.clientY;sh=b.offsetHeight;document.body.style.cursor='row-resize';e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!g)return;b.style.height=Math.max(80,Math.min(l.offsetHeight-60,sh-(e.clientY-sy)))+'px';});
-  document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
-})();
-(function(){
-  const d=_('lvDiv'),lp=_('left');let g=false,sx,sw;
-  d.addEventListener('mousedown',e=>{g=true;sx=e.clientX;sw=lp.offsetWidth;document.body.style.cursor='col-resize';e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!g)return;lp.style.width=Math.max(140,Math.min(500,sw+(e.clientX-sx)))+'px';});
-  document.addEventListener('mouseup',()=>{if(g){g=false;document.body.style.cursor='';}});
-})();
+}
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+makeResizer(_('vDiv'),_('rp'),'x',(w,d)=>clamp(w-d,180,900));
+makeResizer(_('leftHD'),_('leftBot'),'y',(h,d)=>clamp(h-d,80,_('left').offsetHeight-60));
+makeResizer(_('lvDiv'),_('left'),'x',(w,d)=>clamp(w+d,140,500));
 
 _('bSide').addEventListener('click',()=>{S.sideOpen=!S.sideOpen;_('left').classList.toggle('collapsed',!S.sideOpen);_('lvDiv').style.display=S.sideOpen?'':'none';});
 _('fD').addEventListener('click',()=>setFS(S.fs-1));_('fI').addEventListener('click',()=>setFS(S.fs+1));
@@ -1539,19 +1540,20 @@ _('pD').addEventListener('click',()=>setPFS(S.pfs-1));_('pI').addEventListener('
 _('uD').addEventListener('click',()=>setUS(S.us-10));_('uI').addEventListener('click',()=>setUS(S.us+10));
 _('bTheme').addEventListener('click',()=>{
   document.documentElement.classList.toggle('light');
-  _('bTheme').textContent = document.documentElement.classList.contains('light') ? '\u263E' : '\u2606';
+  _('bTheme').textContent = document.documentElement.classList.contains('light') ? '\u263E' : '\u263C';
 });
 _('bFont').addEventListener('click',e=>{e.stopPropagation();_('ddFont').classList.toggle('open');});
 document.addEventListener('click',e=>{
   const m=_('ddFont');
   if(m.classList.contains('open')&&!m.contains(e.target)&&e.target!==_('bFont'))m.classList.remove('open');
 });
-_('bCopy').addEventListener('click',()=>{
-  navigator.clipboard.writeText(prev.textContent).then(()=>toast('Copied to clipboard')).catch(()=>{
+function copyText(t,msg){
+  navigator.clipboard.writeText(t).then(()=>toast(msg)).catch(()=>{
     // Fallback for non-HTTPS
-    const ta=document.createElement('textarea');ta.value=prev.textContent;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Copied to clipboard');
+    const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast(msg);
   });
-});
+}
+_('bCopy').addEventListener('click',()=>copyText(prev.textContent,'Copied to clipboard'));
 _('bShadow').addEventListener('click',()=>{
   S.showShadow=!S.showShadow;
   _('bShadow').classList.toggle('on-toggle',S.showShadow);
@@ -1566,20 +1568,11 @@ _('bFull').addEventListener('click',openFullModal);
 _('bFullClose').addEventListener('click',closeFullModal);
 _('fullModal').addEventListener('click',e=>{if(e.target===_('fullModal'))closeFullModal();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&_('fullModal').style.display!=='none')closeFullModal();});
-_('bFullCopy').addEventListener('click',()=>{
-  const t=_('fullPrev').textContent;
-  navigator.clipboard.writeText(t).then(()=>toast('Copied full prompt')).catch(()=>{
-    const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Copied full prompt');
-  });
-});
+_('bFullCopy').addEventListener('click',()=>copyText(_('fullPrev').textContent,'Copied full prompt'));
 
 ed.addEventListener('input',()=>{saveEdit();sched();});
-ed.addEventListener('paste',()=>{
-  // After the paste lands, immediately re-highlight and re-sync so the overlay
-  // never shows stale text under the cursor.
-  requestAnimationFrame(()=>{saveEdit();renderHighlight();});
-});
 ed.addEventListener('scroll',()=>{requestAnimationFrame(syncScroll);});
+new ResizeObserver(drawBlockBox).observe(hl);
 // Re-render only when the caret moves into a different block.
 let caretRaf=0;
 function onCaret(){
@@ -1592,7 +1585,12 @@ function onCaret(){
 }
 ['keyup','mouseup','focus','select'].forEach(ev=>ed.addEventListener(ev,onCaret));
 document.addEventListener('selectionchange',()=>{if(document.activeElement===ed)onCaret();});
-ed.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const s=ed.selectionStart,n=ed.selectionEnd,v=ed.value;ed.value=v.substring(0,s)+'  '+v.substring(n);ed.selectionStart=ed.selectionEnd=s+2;saveEdit();sched();}});
+ed.addEventListener('keydown',e=>{
+  if(e.key!=='Tab')return;
+  e.preventDefault();
+  // execCommand keeps the native undo stack (assigning ed.value wipes it); it fires 'input' itself
+  if(!document.execCommand('insertText',false,'  ')){ed.setRangeText('  ',ed.selectionStart,ed.selectionEnd,'end');saveEdit();sched();}
+});
 cN.addEventListener('input',sched);uN.addEventListener('input',sched);
 
 // Bottom tabs
@@ -1721,6 +1719,7 @@ function applyPanel(txt){
   S.panelValues=nv;
 }
 
+const panelRO=new ResizeObserver(es=>{for(const e of es)if(e.target.offsetHeight)S.panelHeight=e.target.offsetHeight;});
 function renderPanel(){
   let h='<div class="sec"><div class="st" style="display:flex;align-items:center;gap:6px"><span>Custom Toggles</span><span style="flex:1"></span><button class="ref-btn" id="pRefBtn" title="Show Custom Toggles syntax">'+(S.panelRefOpen?'Hide':'Toggle Syntax')+'</button></div>';
   if(S.panelRefOpen)h+=panelSyntaxRef();
@@ -1738,9 +1737,9 @@ function renderPanel(){
   tc.panel.innerHTML=h;
   _('pApp')?.addEventListener('click',()=>{applyPanel(_('pSrc')?.value??'');renderPanel();sched();});
   _('pRefBtn')?.addEventListener('click',()=>{S.panelRefOpen=!S.panelRefOpen;renderPanel();});
-  // Persist textarea resize
-  const ta=_('pSrc');
-  if(ta){new ResizeObserver(()=>{S.panelHeight=ta.offsetHeight;}).observe(ta);}
+  // Persist textarea resize (ignore the 0 reported while the tab is hidden)
+  panelRO.disconnect();
+  const ta=_('pSrc');if(ta)panelRO.observe(ta);
   tc.panel.querySelectorAll('[data-cs]').forEach(s=>{s.addEventListener('change',e=>{S.panelValues[e.target.dataset.cs]=e.target.value;sched();});});
   tc.panel.querySelectorAll('[data-cx]').forEach(s=>{s.addEventListener('input',e=>{S.panelValues[e.target.dataset.cx]=e.target.value;sched();});});
   tc.panel.querySelectorAll('[data-ct]').forEach(b=>{
@@ -1859,15 +1858,16 @@ const REF_DATA = [
     desc: 'Conditional block. The condition must resolve to literal "true" or "1" to render the contents. Trims leading/trailing whitespace from the content.',
     examples: [
       {code: '{{#if {{? {{getvar::hp}}>0}} }}Alive{{/if}}'},
-      {code: '{{#if {{equal::{{getvar::lang}}::ko}} }}안녕{{:else}}Hello{{/if}}'}
+      {code: '{{#if {{equal::{{getvar::lang}}::ko}} }}안녕{{/if}}'}
     ],
-    note: 'Inner CBS resolves first, then #if evaluates the result. Use {{? expr}} for comparisons.' },
+    note: 'Inner CBS resolves first, then #if evaluates the result. Use {{? expr}} for comparisons. #if has no else branch: {{:else}} only works inside {{#when}}.' },
   { cat: 'Conditional Blocks', name: '{{#if_pure}}', sig: '{{#if_pure condition}}...{{/if}}',
     desc: 'Same as {{#if}} but does NOT trim whitespace from the contents. Useful when leading/trailing newlines matter.',
     examples: [{code: '{{#if_pure {{getglobalvar::toggle_seq}} }}\n- Sequence Log\n{{/if}}'}] },
   { cat: 'Conditional Blocks', name: '{{:else}}', sig: '{{:else}}',
-    desc: 'Else branch inside #if, #if_pure, or #when blocks. Renders when the condition is falsy.',
-    examples: [{code: '{{#if {{? {{getvar::hp}}>0}} }}Alive{{:else}}Defeated{{/if}}'}] },
+    desc: 'Else branch inside a #when block. Renders when the condition is falsy. Not supported in #if / #if_pure, where it is left in the output as literal text.',
+    examples: [{code: '{{#when::{{getvar::hp}}::>::0}}Alive{{:else}}Defeated{{/when}}'}],
+    note: 'In a multi-line #when, {{:else}} must sit on its own line. It does not work with the legacy operator.' },
   { cat: 'Conditional Blocks', name: '{{#when}}', sig: '{{#when::value::op::compare}}...{{/when}}',
     desc: 'Versatile conditional with many operators. Supports both {{#when expr}} (space form) and {{#when::a::op::b}} (operator form).',
     examples: [
@@ -1896,21 +1896,26 @@ const REF_DATA = [
 
   // ============ STRUCTURAL BLOCKS ============
   { cat: 'Structural Blocks', name: '{{#each}}', sig: '{{#each array as item}}...{{/each}}',
-    desc: 'Iterates over an array. Inside the block, the variable name (after "as") holds the current item. Use {{arrayelement}} or array index inline.',
-    examples: [{code: '{{#each {{makearray::a::b::c}} as x}}- {{getvar::x}}\n{{/each}}', out: '- a\n- b\n- c\n'}],
-    note: '"as varname" required since the January 2026 RisuAI update.' },
+    desc: 'Iterates over an array. Inside the block, {{slot::name}} is replaced by the current item, where name is the word after "as".',
+    examples: [{code: '{{#each {{makearray::a::b::c}} as x}}[{{slot::x}}]{{/each}}', out: '[a][b][c]'}],
+    note: 'The block body is trimmed before repeating, so newlines at its edges are dropped; use {{#each::keep ...}} to keep them. Prefer the "as name" form; the older {{#each array name}} form is still accepted.' },
   { cat: 'Structural Blocks', name: '{{#pure}}', sig: '{{#pure}}...{{/pure}}',
     desc: 'Prevents CBS parsing within the block. Use to show literal CBS in output (e.g., documentation, examples).',
+    note: 'Deprecated in RisuAI in favour of {{#puredisplay}}.',
     examples: [{code: '{{#pure}}{{getvar::x}}{{/pure}}', out: '{{getvar::x}}'}] },
   { cat: 'Structural Blocks', name: '{{#puredisplay}}', aliases: ['pure_display'], sig: '{{#puredisplay}}...{{/puredisplay}}',
-    desc: 'Like #pure but renders only in display, stripped from prompts sent to the model.' },
+    desc: 'Displays the content without any CBS processing. Useful for raw HTML or for showing CBS syntax literally. Replaces the deprecated #pure.',
+    examples: [{code: '{{#puredisplay}}{{getvar::x}}{{/puredisplay}}', out: '{{getvar::x}}'}],
+    note: 'Braces are passed through escaped, so this preview shows \\{\\{getvar::x\\}\\}. RisuAI displays them as plain {{ }}.' },
   { cat: 'Structural Blocks', name: '{{#escape}}', sig: '{{#escape}}...{{/escape}}',
     desc: 'Escapes special characters (curly braces, etc.) within the block.' },
   { cat: 'Structural Blocks', name: '{{#code}}', sig: '{{#code}}...{{/code}}',
-    desc: 'Marks content as code; affects display rendering. Does not execute or parse CBS inside.' },
-  { cat: 'Structural Blocks', name: '{{#func}}', sig: '{{#func name(args)}}body{{/func}}',
-    desc: 'Defines a reusable function. Call later via {{name::arg1::arg2}}.',
-    examples: [{code: '{{#func greet(who)}}Hello, {{getvar::who}}!{{/func}}{{greet::world}}', out: 'Hello, world!'}] },
+    desc: 'Parses the CBS inside, then removes all newlines and tabs, so a block written across many lines comes out as one line.',
+    examples: [{code: '{{#code}}\n{{char}}\n is here\n{{/code}}', out: 'CharacterName is here'}],
+    note: 'RisuAI also decodes escapes such as \\n and \\uXXXX inside #code. The editor preview does not do this yet.' },
+  { cat: 'Structural Blocks', name: '{{#func}}', sig: '{{#func name}}body{{/func}} ... {{call::name::arg1::arg2}}',
+    desc: 'Defines a reusable block. Run it with {{call::name::...}}: inside the body, {{arg::1}}, {{arg::2}}, ... are replaced by the call arguments ({{arg::0}} is the function name). The definition itself outputs nothing.',
+    examples: [{code: '{{#func greet}}Hello, {{arg::1}}!{{/func}}{{call::greet::world}}', out: 'Hello, world!'}] },
 
   // ============ CALC EXPRESSIONS ============
   { cat: 'Calc Expressions', name: '{{? ...}}', sig: '{{? expression}}',
@@ -2127,7 +2132,7 @@ const REF_DATA = [
     desc: 'Outputs literal ";".' },
   { cat: 'Escape', name: '{{br}}', aliases: ['newline'], sig: '{{br::n}}',
     desc: 'Inserts n newlines (default 1).',
-    examples: [{code: 'Line 1{{br}}Line 2', out: 'Line 1\\nLine 2'}] },
+    examples: [{code: 'Line 1{{br}}Line 2', out: 'Line 1\nLine 2'}] },
   { cat: 'Escape', name: '{{cbr}}', aliases: ['cnl','cnewline'], sig: '{{cbr::n}}',
     desc: 'Inserts n newlines, but in a context that survives certain CSS/rendering whitespace collapsing.' },
   { cat: 'Escape', name: '{{blank}}', sig: '{{blank}}',
@@ -2149,14 +2154,7 @@ const REF_DATA = [
     desc: 'Displays a character emotion sprite by name.' },
 ];
 
-const REF_TOGGLES_INTRO = `Custom Toggles let preset authors define UI controls (checkboxes, dropdowns, text fields, groups) that surface in the user's chat sidebar. Toggle values are stored in global chat variables with a "toggle_" prefix.
-
-Each line follows: key=label=type=options
-Empty lines are ignored. The type field determines what kind of control is created.
-
-Most toggles store their value in toggle_<key>. Reference them in prompts via {{getglobalvar::toggle_<key>}}, or via #when operators (toggle, tis, tisnot) which add the prefix automatically.`;
-
-const REF_STATE = { active: null, query: '', activeIdx: 0 };
+const REF_STATE = { active: null, query: '' };
 
 function refMatch(entry, q) {
   if (!q) return true;
@@ -2284,7 +2282,6 @@ function toggleRefDrawer() {
 _('bRoll').addEventListener('click',()=>{
   S.rngSeed=(Math.random()*4294967296)>>>0;
   update();
-  renderHighlight();
   toast('Re-rolled randomness');
 });
 _('bRef').addEventListener('click', toggleRefDrawer);
@@ -2296,21 +2293,7 @@ _('refSearch').addEventListener('input', e => {
 });
 
 // Drawer height drag
-(function(){
-  const hd = _('drawerHD'), dr = _('drawer');
-  let g = false, sy, sh;
-  hd.addEventListener('mousedown', e => {
-    g = true; sy = e.clientY; sh = dr.offsetHeight;
-    document.body.style.cursor = 'row-resize'; e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
-    if (!g) return;
-    dr.style.height = Math.max(140, Math.min(700, sh - (e.clientY - sy))) + 'px';
-  });
-  document.addEventListener('mouseup', () => {
-    if (g) { g = false; document.body.style.cursor = ''; }
-  });
-})();
+makeResizer(_('drawerHD'),_('drawer'),'y',(h,d)=>clamp(h-d,140,700));
 
 
 function rPI(items){
